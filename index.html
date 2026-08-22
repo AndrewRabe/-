@@ -1,0 +1,581 @@
+<title>Домашний реестр</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style id="app-style">
+:root{
+  --bg:#F1F2ED; --surface:#FBFBF8; --surface2:#E9EBE2; --ink:#22261F; --muted:#6C7365;
+  --line:#D9DCCF; --accent:#33684E; --accent-soft:#E2EDE4; --accent-ink:#FFFFFF;
+  --sale:#A2691E; --sale-soft:#F3E8D3; --danger:#A63D2F; --shadow:0 12px 40px rgba(30,38,28,.18);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141714; --surface:#1C201C; --surface2:#242A23; --ink:#E7EAE2; --muted:#96A090;
+    --line:#2D332C; --accent:#7CC49E; --accent-soft:#24352C; --accent-ink:#10231A;
+    --sale:#D9A055; --sale-soft:#3A301C; --danger:#E07B6B; --shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141714; --surface:#1C201C; --surface2:#242A23; --ink:#E7EAE2; --muted:#96A090;
+  --line:#2D332C; --accent:#7CC49E; --accent-soft:#24352C; --accent-ink:#10231A;
+  --sale:#D9A055; --sale-soft:#3A301C; --danger:#E07B6B; --shadow:0 12px 40px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:'Golos Text',system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,[data-a]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+textarea{width:100%;resize:vertical;min-height:74px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* ── шапка ── */
+header.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--bg);border-bottom:1px solid var(--line)}
+.wordmark{font-family:'PT Serif',Georgia,serif;font-weight:700;font-size:19px;letter-spacing:.2px;white-space:nowrap}
+.wordmark .leaf{color:var(--accent)}
+#q{flex:1;max-width:340px;min-width:0}
+#chip{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px}
+#chip::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);opacity:.85}
+#chip.pending::before{background:var(--sale)}
+#chip.err::before,#chip.ro::before{background:var(--danger)}
+.btn{background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:8px 14px;font-weight:600;white-space:nowrap}
+.btn:hover{filter:brightness(1.07)}
+.btn.ghost{background:var(--surface2);color:var(--ink);font-weight:500}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+
+/* ── каркас ── */
+.shell{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;max-width:1280px;margin:0 auto}
+nav#nav{padding:18px 10px 40px 18px;border-right:1px solid var(--line);position:sticky;top:53px;height:calc(100vh - 53px);overflow-y:auto}
+main#main{padding:20px 18px 80px;min-width:0}
+.navgroup{margin-bottom:18px}
+.navgroup h4{margin:0 0 6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.navitem{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 9px;border-radius:8px;color:var(--ink)}
+.navitem:hover{background:var(--surface2)}
+.navitem.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.navitem .n{margin-left:auto;font-size:12px;color:var(--muted)}
+.navitem.on .n{color:inherit}
+
+/* ── карточки ── */
+.viewtitle{display:flex;align-items:baseline;gap:10px;margin:2px 0 14px}
+.viewtitle h2{margin:0;font-family:'PT Serif',Georgia,serif;font-size:22px}
+.viewtitle .n{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 14px 12px;cursor:pointer;display:flex;flex-direction:column;gap:8px;transition:border-color .15s, transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.card-top{display:flex;gap:10px;align-items:flex-start}
+.card-ic{font-size:22px;line-height:1.2}
+.card-top h3{margin:0;font-size:15.5px;font-weight:600;line-height:1.3}
+.card-cat{font-size:12px;color:var(--muted)}
+.badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;margin-left:auto;white-space:nowrap}
+.badge.sale{background:var(--sale-soft);color:var(--sale)}
+.badge.archive{background:var(--surface2);color:var(--muted)}
+.card-notes{margin:0;font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-meta{font-size:12px;color:var(--muted);margin-top:auto}
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:34px 20px;text-align:center;color:var(--muted)}
+.empty b{color:var(--ink)}
+
+/* ── сводные списки ── */
+.groupblock{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.groupblock h3{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
+.groupblock h3 button{color:var(--accent);font-weight:600;font-size:13px}
+.row{display:flex;align-items:flex-start;gap:9px;padding:6px 2px;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:none}
+.row input[type=checkbox]{width:17px;height:17px;margin-top:2px;accent-color:var(--accent);flex:none;cursor:pointer}
+.row .t{flex:1;min-width:0}
+.row.done .t{color:var(--muted);text-decoration:line-through}
+.row .src{font-size:12px;color:var(--accent);white-space:nowrap;cursor:pointer}
+.row .x{color:var(--muted);font-size:15px;padding:0 4px;flex:none}
+.row .x:hover{color:var(--danger)}
+.kind{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px}
+.kind.buy{background:var(--accent-soft);color:var(--accent)}
+
+/* ── панель объекта ── */
+#scrim{position:fixed;inset:0;background:rgba(15,20,15,.45);z-index:40}
+#detail{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--bg);border-left:1px solid var(--line);box-shadow:var(--shadow);z-index:50;overflow-y:auto;padding:16px 20px 60px}
+@media (prefers-reduced-motion: no-preference){
+  #detail{animation:slidein .18s ease-out}
+  @keyframes slidein{from{transform:translateX(30px);opacity:.4}to{transform:none;opacity:1}}
+}
+.d-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.d-head .ic{font-size:26px}
+#d-name{flex:1;font-size:18px;font-weight:600;background:transparent;border-color:transparent}
+#d-name:hover,#d-name:focus{border-color:var(--line);background:var(--surface)}
+.d-close{font-size:22px;color:var(--muted);padding:4px 8px}
+.d-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+.seg{display:inline-flex;background:var(--surface2);border-radius:9px;padding:3px}
+.seg button{padding:5px 11px;border-radius:7px;font-size:13px;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.seg button.on.sale{color:var(--sale)}
+section.d-sec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:12px}
+.d-sec h3{margin:0 0 10px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.specs{display:grid;grid-template-columns:minmax(90px,38%) 1fr 26px;gap:6px;align-items:center}
+.specs input{padding:5px 9px;font-size:13.5px}
+.addrow{display:flex;gap:8px;margin-top:10px}
+.addrow input[type=text]{flex:1;min-width:0}
+.addrow .btn{padding:7px 12px}
+.instr{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--bg)}
+.instr h4{margin:0 0 4px;font-size:14px}
+.instr p{margin:0;font-size:13.5px;white-space:pre-wrap;color:var(--ink)}
+.instr .tools{margin-top:6px;display:flex;gap:12px}
+.instr .tools button{font-size:12.5px;color:var(--accent);font-weight:600}
+.instr .tools button.rm{color:var(--muted)}
+.instr input,.instr textarea{width:100%;margin-bottom:6px}
+.kindpick{display:flex;gap:6px}
+.kindpick button{font-size:12px;padding:5px 10px;border-radius:99px;background:var(--surface2);color:var(--muted)}
+.kindpick button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.d-foot{display:flex;gap:10px;margin-top:18px}
+.hint{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+
+/* ── модалка ── */
+#modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(15,20,15,.45);padding:20px}
+.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(420px,100%)}
+.modal-box h3{margin:0 0 14px;font-family:'PT Serif',Georgia,serif;font-size:18px}
+.modal-box label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+.modal-box input,.modal-box select{width:100%}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+#robanner{background:var(--sale-soft);color:var(--sale);padding:8px 18px;font-size:13px;text-align:center}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  nav#nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;overflow-x:auto}
+  .navgroup{margin:0;display:flex;gap:6px;align-items:center;flex:none}
+  .navgroup h4{display:none}
+  .navitem{white-space:nowrap;padding:6px 11px;background:var(--surface2);border-radius:99px}
+  .navitem.on{background:var(--accent-soft)}
+  header.top{flex-wrap:wrap;gap:8px 12px}
+  #q{order:3;flex-basis:100%;max-width:none}
+}
+</style>
+
+<div id="app"></div>
+
+<script id="app-code">
+(function(){
+'use strict';
+var FONTS='https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@700&family=JetBrains+Mono:wght@400;500&display=swap';
+var CATS={home:{label:'Дом',icon:'🏠'},car:{label:'Машина',icon:'🚗'},tech:{label:'Техника',icon:'🔧'},stuff:{label:'Вещи',icon:'📦'}};
+var LSKEY='home-registry-v1';
+
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function plural(n,f){var m10=n%10,m100=n%100;var i=(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<12||m100>14))?1:2;return n+' '+f[i];}
+
+var SEED={rev:1,updatedAt:0,items:[
+ {id:'ex-car',name:'Автомобиль',cat:'car',status:'active',price:'',
+  notes:'Карточка-пример. Замените данными своей машины или удалите её кнопкой внизу панели.',
+  specs:[{id:uid(),k:'Госномер',v:'—'},{id:uid(),k:'Пробег',v:'—'}],
+  instructions:[{id:uid(),title:'Давление в шинах',text:'Проверять раз в месяц и перед дальней дорогой. Рекомендованные значения указаны на стойке водительской двери.'}],
+  tasks:[{id:uid(),text:'Записаться на замену масла',done:false}],
+  questions:[{id:uid(),text:'Когда в последний раз меняли тормозную жидкость?',done:false}],
+  plans:[{id:uid(),text:'Щётки стеклоочистителя на зиму',done:false,kind:'buy'}]},
+ {id:'ex-wash',name:'Стиральная машина',cat:'tech',status:'active',price:'',
+  notes:'',specs:[{id:uid(),k:'Модель',v:'—'}],
+  instructions:[{id:uid(),title:'Чистка фильтра',text:'Раз в 2–3 месяца: открыть лючок внизу справа, подставить плоскую ёмкость, выкрутить фильтр против часовой стрелки, промыть под водой.'}],
+  tasks:[],questions:[],plans:[]},
+ {id:'ex-flat',name:'Квартира',cat:'home',status:'active',price:'',
+  notes:'',specs:[],instructions:[],tasks:[],
+  questions:[],plans:[{id:uid(),text:'Фильтры для кухонной вытяжки',done:false,kind:'buy'},{id:uid(),text:'Полки в кладовку',done:false,kind:'improve'}]}
+]};
+
+var state=null, pub=null, canWrite=true, saveMode='files', userEdited=false;
+var route={view:'all',item:null};
+var query='', saveTimer=null, retryTimer=null, editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null;
+
+var SHELL='<div id="robanner" hidden>Режим просмотра — изменения не сохраняются</div>'
+ +'<header class="top"><div class="wordmark">Домашний <span class="leaf">реестр</span></div>'
+ +'<input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off">'
+ +'<span id="chip">Загрузка…</span>'
+ +'<button class="btn" data-a="new">+ Объект</button></header>'
+ +'<div class="shell"><nav id="nav"></nav><main id="main"></main></div>'
+ +'<div id="scrim" hidden data-a="close"></div>'
+ +'<aside id="detail" hidden></aside>'
+ +'<div id="modal" hidden></div>';
+
+/* ── загрузка состояния ── */
+function readInline(){
+  try{var n=document.getElementById('app-state');if(n)return JSON.parse(n.textContent);}catch(e){}
+  return null;
+}
+function readLocal(){
+  try{var s=localStorage.getItem(LSKEY);if(s)return JSON.parse(s);}catch(e){}
+  return null;
+}
+function writeLocal(){try{localStorage.setItem(LSKEY,JSON.stringify(state));}catch(e){}}
+function best(a,b){if(!a)return b;if(!b)return a;return (b.rev||0)>(a.rev||0)?b:a;}
+
+function init(){
+  document.getElementById('app').innerHTML=SHELL;
+  state=best(readInline(),readLocal())||SEED;
+  buildOnce();renderAll();
+  fetch('data/state.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+    .then(function(remote){
+      if(remote&&!userEdited&&(remote.rev||0)>(state.rev||0)){state=remote;writeLocal();renderAll();}
+    }).catch(function(){});
+  var useCap=(window.claude&&window.claude.use)?window.claude.use('artifact'):Promise.resolve(null);
+  useCap.then(function(ns){
+    pub=ns;
+    setChip(pub?'saved':'local');
+  });
+  setChip('saved');
+}
+
+/* ── сохранение ── */
+function setChip(mode,msg){
+  var c=document.getElementById('chip');
+  c.className='';
+  if(mode==='pending'){c.classList.add('pending');c.textContent='Сохранение…';}
+  else if(mode==='saved'){c.textContent='Сохранено';}
+  else if(mode==='local'){c.textContent='Только на этом устройстве';}
+  else if(mode==='ro'){c.classList.add('ro');c.textContent='Только просмотр';}
+  else if(mode==='err'){c.classList.add('err');c.textContent=msg||'Ошибка сохранения';}
+}
+function touch(){
+  userEdited=true;
+  state.rev=(state.rev||0)+1;state.updatedAt=Date.now();
+  writeLocal();
+  if(!canWrite)return;
+  setChip('pending');
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(save,1400);
+}
+function save(){
+  if(!pub){setChip('local');return;}
+  var snapshot=JSON.stringify(state);
+  var p = saveMode==='files' ? pub.publish({'data/state.json':snapshot}) : pub.publish(buildPage());
+  p.then(function(){setChip('saved');})
+   .catch(function(e){
+     var code=e&&e.code;
+     if((code==='capability_disabled'||code==='read_only_path'||code==='capability_removed')&&saveMode==='files'){
+       saveMode='html';save();return;
+     }
+     if(code==='not_writer'||code==='not_granted'||code==='consent_required'||code==='not_declared'){
+       canWrite=false;setChip('ro');
+       document.getElementById('robanner').hidden=false;return;
+     }
+     if(code==='conflict'){return;} /* оболочка сама перезагрузит все виды на новую версию */
+     if(code==='rate_limited'){clearTimeout(retryTimer);retryTimer=setTimeout(save,8000);setChip('pending');return;}
+     if(code==='upstream_error'){clearTimeout(retryTimer);retryTimer=setTimeout(save,3000+Math.random()*2000);setChip('pending');return;}
+     setChip('err');
+   });
+}
+function buildPage(){
+  var css=document.getElementById('app-style').textContent;
+  var code=document.getElementById('app-code').textContent;
+  var json=JSON.stringify(state).replace(/</g,'\\u003c');
+  var SC='<'+'/script>', ST='<'+'/style>';
+  return '<!doctype html>\n<html lang="ru"><head><meta charset="utf-8">'
+    +'<meta name="viewport" content="width=device-width, initial-scale=1">'
+    +'<title>Домашний реестр</title>'
+    +'<link rel="stylesheet" href="'+FONTS+'">'
+    +'<style id="app-style">'+css+ST+'</head><body>'
+    +'<div id="app"></div>'
+    +'<script id="app-state" type="application/json">'+json+SC
+    +'<script id="app-code">'+code+SC
+    +'</body></html>';
+}
+
+/* ── помощники по данным ── */
+function items(){return state.items;}
+function find(id){for(var i=0;i<state.items.length;i++)if(state.items[i].id===id)return state.items[i];return null;}
+function visible(it){return it.status!=='archive';}
+function matches(it){
+  if(!query)return true;
+  var q=query.toLowerCase();
+  var hay=[it.name,it.notes].concat((it.specs||[]).map(function(s){return s.k+' '+s.v;})).join(' ').toLowerCase();
+  return hay.indexOf(q)>=0;
+}
+function openCount(arr){return (arr||[]).filter(function(x){return !x.done;}).length;}
+
+/* ── каркас ── */
+function buildOnce(){
+  document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
+  document.addEventListener('click',onClick);
+  document.addEventListener('change',onChange);
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){closeDetail();closeModal();}
+    if(e.key==='Enter'&&e.target.matches('.addrow input[type=text]')){
+      var btn=e.target.parentElement.querySelector('[data-a]');
+      if(btn)btn.click();
+    }
+  });
+}
+function renderAll(){renderNav();renderMain();renderDetail();}
+
+/* ── навигация ── */
+function nv(view,label,count,icon){
+  var on=route.view===view?' on':'';
+  return '<button class="navitem'+on+'" data-a="view" data-v="'+view+'">'+(icon?icon+' ':'')+label
+    +(count!=null?'<span class="n mono">'+count+'</span>':'')+'</button>';
+}
+function renderNav(){
+  var act=state.items.filter(visible);
+  var tasksN=0,plansN=0;
+  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);});
+  var saleN=state.items.filter(function(i){return i.status==='sale';}).length;
+  var archN=state.items.filter(function(i){return i.status==='archive';}).length;
+  var h='<div class="navgroup"><h4>Разделы</h4>'+nv('all','Всё',act.length);
+  Object.keys(CATS).forEach(function(c){
+    h+=nv('cat:'+c,CATS[c].label,act.filter(function(i){return i.cat===c;}).length,CATS[c].icon);
+  });
+  h+='</div><div class="navgroup"><h4>Сводки</h4>'
+    +nv('tasks','Задачи',tasksN,'☑')
+    +nv('plans','Покупки и планы',plansN,'🛒')
+    +'</div><div class="navgroup"><h4>Статусы</h4>'
+    +nv('sale','На продажу',saleN,'💰')
+    +nv('archive','Архив',archN,'🗄')
+    +'</div>';
+  document.getElementById('nav').innerHTML=h;
+}
+
+/* ── основная область ── */
+function cardHTML(it){
+  var badge='';
+  if(it.status==='sale')badge='<span class="badge sale">продажа'+(it.price?' · '+esc(it.price):'')+'</span>';
+  if(it.status==='archive')badge='<span class="badge archive">архив</span>';
+  var meta=[];
+  var t=openCount(it.tasks);if(t)meta.push(plural(t,['задача','задачи','задач']));
+  var qn=openCount(it.questions);if(qn)meta.push(plural(qn,['вопрос','вопроса','вопросов']));
+  var p=openCount(it.plans);if(p)meta.push(p+' в планах');
+  var ins=(it.instructions||[]).length;if(ins)meta.push(plural(ins,['инструкция','инструкции','инструкций']));
+  return '<article class="card" tabindex="0" role="button" data-a="open" data-id="'+it.id+'">'
+    +'<div class="card-top"><span class="card-ic">'+CATS[it.cat].icon+'</span>'
+    +'<div><h3>'+esc(it.name)+'</h3><span class="card-cat">'+CATS[it.cat].label+'</span></div>'+badge+'</div>'
+    +(it.notes?'<p class="card-notes">'+esc(it.notes)+'</p>':'')
+    +'<div class="card-meta">'+(meta.join(' · ')||'пока пусто')+'</div></article>';
+}
+function gridHTML(list,emptyMsg){
+  if(!list.length)return '<div class="empty">'+emptyMsg+'</div>';
+  return '<div class="grid">'+list.map(cardHTML).join('')+'</div>';
+}
+function renderMain(){
+  var m=document.getElementById('main'),h='',v=route.view;
+  function title(t,n){return '<div class="viewtitle"><h2>'+t+'</h2>'+(n!=null?'<span class="n mono">'+n+'</span>':'')+'</div>';}
+  if(v==='all'||v.indexOf('cat:')===0){
+    var cat=v==='all'?null:v.slice(4);
+    var list=state.items.filter(visible).filter(function(i){return !cat||i.cat===cat;}).filter(matches);
+    h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Все объекты',list.length)
+      +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':'Здесь пока пусто. Нажмите <b>«+ Объект»</b> вверху, чтобы добавить первый.');
+  }else if(v==='sale'||v==='archive'){
+    var list2=state.items.filter(function(i){return i.status===v;}).filter(matches);
+    h=title(v==='sale'?'💰 На продажу':'🗄 Архив',list2.length)
+      +gridHTML(list2,v==='sale'?'Отметьте объект «На продажу» в его карточке — он появится здесь.':'Отправляйте сюда то, чем больше не пользуетесь: продали, выбросили, отдали.');
+  }else if(v==='tasks'){
+    h=title('☑ Все задачи',null);var any=false;
+    state.items.filter(visible).forEach(function(it){
+      var open=(it.tasks||[]).filter(function(t){return !t.done;});
+      if(!open.length)return;any=true;
+      h+='<div class="groupblock"><h3>'+CATS[it.cat].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button></h3>'
+        +open.map(function(t){return rowHTML(it.id,'tasks',t);}).join('')+'</div>';
+    });
+    if(!any)h+='<div class="empty">Открытых задач нет. Задачи добавляются в карточке объекта.</div>';
+  }else if(v==='plans'){
+    h=title('🛒 Покупки и планы',null);
+    var buy=[],imp=[];
+    state.items.filter(visible).forEach(function(it){
+      (it.plans||[]).forEach(function(p){if(!p.done)(p.kind==='improve'?imp:buy).push({it:it,p:p});});
+    });
+    function block(name,arr){
+      if(!arr.length)return '';
+      return '<div class="groupblock"><h3>'+name+'</h3>'+arr.map(function(e){
+        return '<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">'
+          +'<span class="t">'+esc(e.p.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span></div>';
+      }).join('')+'</div>';
+    }
+    var bl=block('Докупить',buy)+block('Улучшить и сделать',imp);
+    h+=bl||'<div class="empty">Списки пусты. Планы и покупки добавляются в карточке объекта — раздел «Планы и покупки».</div>';
+  }
+  m.innerHTML=h;
+}
+function rowHTML(itemId,kind,x,delBtn){
+  return '<div class="row'+(x.done?' done':'')+'">'
+    +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
+    +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
+    +'<span class="t">'+esc(x.text)+'</span>'
+    +(delBtn?'<button class="x" title="Удалить" data-a="del-sub" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">✕</button>':'')
+    +'</div>';
+}
+
+/* ── панель объекта ── */
+function renderDetail(){
+  var d=document.getElementById('detail'),s=document.getElementById('scrim');
+  var it=route.item?find(route.item):null;
+  if(!it){d.hidden=true;s.hidden=true;return;}
+  d.hidden=false;s.hidden=false;
+  var h='<div class="d-head"><span class="ic">'+CATS[it.cat].icon+'</span>'
+    +'<input id="d-name" value="'+esc(it.name)+'" data-f="name" data-id="'+it.id+'" aria-label="Название">'
+    +'<button class="d-close" data-a="close" title="Закрыть">✕</button></div>';
+
+  h+='<div class="d-ctl"><select data-f="cat" data-id="'+it.id+'" aria-label="Раздел">';
+  Object.keys(CATS).forEach(function(c){h+='<option value="'+c+'"'+(it.cat===c?' selected':'')+'>'+CATS[c].icon+' '+CATS[c].label+'</option>';});
+  h+='</select><span class="seg">'
+    +'<button class="'+(it.status==='active'?'on':'')+'" data-a="status" data-id="'+it.id+'" data-v="active">В строю</button>'
+    +'<button class="'+(it.status==='sale'?'on sale':'')+'" data-a="status" data-id="'+it.id+'" data-v="sale">На продажу</button>'
+    +'<button class="'+(it.status==='archive'?'on':'')+'" data-a="status" data-id="'+it.id+'" data-v="archive">В архив</button>'
+    +'</span></div>';
+
+  if(it.status==='sale'){
+    h+='<section class="d-sec"><h3>Продажа</h3><input type="text" placeholder="Цена, площадка, состояние…" value="'+esc(it.price)+'" data-f="price" data-id="'+it.id+'" style="width:100%"></section>';
+  }
+
+  h+='<section class="d-sec"><h3>Заметки</h3><textarea data-f="notes" data-id="'+it.id+'" placeholder="Что важно помнить об этом объекте…">'+esc(it.notes)+'</textarea></section>';
+
+  /* характеристики */
+  h+='<section class="d-sec"><h3>Характеристики</h3>';
+  if((it.specs||[]).length){
+    h+='<div class="specs">';
+    it.specs.forEach(function(sp){
+      h+='<input value="'+esc(sp.k)+'" placeholder="Параметр" data-f="spec-k" data-id="'+it.id+'" data-sub="'+sp.id+'">'
+        +'<input value="'+esc(sp.v)+'" placeholder="Значение" data-f="spec-v" data-id="'+it.id+'" data-sub="'+sp.id+'">'
+        +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+it.id+'" data-kind="specs" data-sub="'+sp.id+'">✕</button>';
+    });
+    h+='</div>';
+  }
+  h+='<div class="addrow"><input type="text" id="add-spec" placeholder="Модель, серийный номер, дата покупки…">'
+    +'<button class="btn ghost" data-a="add-spec" data-id="'+it.id+'">Добавить</button></div>'
+    +'<p class="hint">Название параметра и значение вводите через « — », например: «Гарантия — до 03.2027».</p></section>';
+
+  /* задачи */
+  h+='<section class="d-sec"><h3>Задачи</h3>'
+    +(it.tasks||[]).map(function(t){return rowHTML(it.id,'tasks',t,true);}).join('')
+    +'<div class="addrow"><input type="text" id="add-task" placeholder="Новая задача…">'
+    +'<button class="btn ghost" data-a="add-sub" data-kind="tasks" data-id="'+it.id+'">Добавить</button></div></section>';
+
+  /* вопросы */
+  h+='<section class="d-sec"><h3>Вопросы</h3>'
+    +(it.questions||[]).map(function(t){return rowHTML(it.id,'questions',t,true);}).join('')
+    +'<div class="addrow"><input type="text" id="add-question" placeholder="Что нужно выяснить…">'
+    +'<button class="btn ghost" data-a="add-sub" data-kind="questions" data-id="'+it.id+'">Добавить</button></div></section>';
+
+  /* планы и покупки */
+  h+='<section class="d-sec"><h3>Планы и покупки</h3>'
+    +(it.plans||[]).map(function(t){return rowHTML(it.id,'plans',t,true);}).join('')
+    +'<div class="addrow"><input type="text" id="add-plan" placeholder="Что докупить или улучшить…">'
+    +'<button class="btn ghost" data-a="add-sub" data-kind="plans" data-id="'+it.id+'">Добавить</button></div>'
+    +'<div class="kindpick" style="margin-top:8px">'
+    +'<button class="'+(newPlanKind==='buy'?'on':'')+'" data-a="plan-kind" data-v="buy">докупить</button>'
+    +'<button class="'+(newPlanKind==='improve'?'on':'')+'" data-a="plan-kind" data-v="improve">улучшить</button>'
+    +'</div></section>';
+
+  /* инструкции */
+  h+='<section class="d-sec"><h3>Инструкции и ремонт</h3>';
+  (it.instructions||[]).forEach(function(ins){
+    if(editingInstr[ins.id]){
+      h+='<div class="instr"><input value="'+esc(ins.title)+'" placeholder="Название" data-f="instr-title" data-id="'+it.id+'" data-sub="'+ins.id+'">'
+        +'<textarea data-f="instr-text" data-id="'+it.id+'" data-sub="'+ins.id+'" placeholder="Порядок действий, номера мастеров, ссылки…">'+esc(ins.text)+'</textarea>'
+        +'<div class="tools"><button data-a="instr-done" data-sub="'+ins.id+'">Готово</button></div></div>';
+    }else{
+      h+='<div class="instr"><h4>'+esc(ins.title||'Без названия')+'</h4><p>'+esc(ins.text)+'</p>'
+        +'<div class="tools"><button data-a="instr-edit" data-sub="'+ins.id+'">Изменить</button>'
+        +'<button class="rm" data-a="del-sub" data-id="'+it.id+'" data-kind="instructions" data-sub="'+ins.id+'">Удалить</button></div></div>';
+    }
+  });
+  h+='<div class="addrow"><button class="btn ghost" data-a="add-instr" data-id="'+it.id+'">+ Инструкция</button></div></section>';
+
+  h+='<div class="d-foot">'
+    +(confirmDel
+      ?'<button class="btn danger" data-a="del-item" data-id="'+it.id+'">Точно удалить безвозвратно?</button><button class="btn ghost" data-a="del-cancel">Отмена</button>'
+      :'<button class="btn ghost" data-a="del-ask">Удалить объект…</button>')
+    +'</div>';
+
+  d.innerHTML=h;
+  if(refocus){var f=document.getElementById(refocus);if(f)f.focus();refocus=null;}
+}
+function closeDetail(){route.item=null;confirmDel=false;editingInstr={};renderDetail();}
+
+/* ── модалка нового объекта ── */
+function openModal(){
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  var h='<div class="modal-box"><h3>Новый объект</h3>'
+    +'<label for="ni-name">Название</label><input id="ni-name" type="text" placeholder="Например: холодильник, дача, велосипед…">'
+    +'<label for="ni-cat">Раздел</label><select id="ni-cat">';
+  Object.keys(CATS).forEach(function(c){h+='<option value="'+c+'">'+CATS[c].icon+' '+CATS[c].label+'</option>';});
+  h+='</select><div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<button class="btn" data-a="create">Создать</button></div></div>';
+  m.innerHTML=h;
+  document.getElementById('ni-name').focus();
+}
+function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
+
+/* ── события ── */
+function onClick(e){
+  var b=e.target.closest('[data-a]');
+  if(!b)return;
+  var a=b.dataset.a,id=b.dataset.id,it=id?find(id):null;
+  if(a==='view'){route.view=b.dataset.v;renderNav();renderMain();}
+  else if(a==='open'){e.stopPropagation();route.item=id;confirmDel=false;editingInstr={};renderDetail();}
+  else if(a==='close'){closeDetail();}
+  else if(a==='new'){openModal();}
+  else if(a==='modal-close'){closeModal();}
+  else if(a==='create'){
+    var name=document.getElementById('ni-name').value.trim();
+    if(!name){document.getElementById('ni-name').focus();return;}
+    var item={id:uid(),name:name,cat:document.getElementById('ni-cat').value,status:'active',price:'',notes:'',specs:[],instructions:[],tasks:[],questions:[],plans:[]};
+    state.items.unshift(item);touch();closeModal();
+    route.item=item.id;renderAll();
+  }
+  else if(a==='status'&&it){it.status=b.dataset.v;touch();renderAll();}
+  else if(a==='tgl'&&it){
+    var arr=it[b.dataset.kind]||[];
+    arr.forEach(function(x){if(x.id===b.dataset.sub)x.done=!x.done;});
+    touch();renderNav();renderMain();if(route.item)renderDetail();
+  }
+  else if(a==='del-sub'&&it){
+    it[b.dataset.kind]=(it[b.dataset.kind]||[]).filter(function(x){return x.id!==b.dataset.sub;});
+    touch();renderAll();
+  }
+  else if(a==='add-sub'&&it){
+    var map={tasks:'add-task',questions:'add-question',plans:'add-plan'};
+    var inp=document.getElementById(map[b.dataset.kind]);
+    var text=inp?inp.value.trim():'';
+    if(!text){if(inp)inp.focus();return;}
+    var entry={id:uid(),text:text,done:false};
+    if(b.dataset.kind==='plans')entry.kind=newPlanKind;
+    it[b.dataset.kind]=(it[b.dataset.kind]||[]);
+    it[b.dataset.kind].push(entry);
+    refocus=map[b.dataset.kind];
+    touch();renderAll();
+  }
+  else if(a==='add-spec'&&it){
+    var inp2=document.getElementById('add-spec');
+    var raw=inp2.value.trim();
+    if(!raw){inp2.focus();return;}
+    var parts=raw.split(/\s+[—–-]\s+/);
+    it.specs.push({id:uid(),k:parts[0],v:parts.slice(1).join(' — ')||''});
+    refocus='add-spec';touch();renderDetail();
+  }
+  else if(a==='plan-kind'){newPlanKind=b.dataset.v;renderDetail();var i3=document.getElementById('add-plan');if(i3)i3.focus();}
+  else if(a==='add-instr'&&it){
+    var ins={id:uid(),title:'',text:''};
+    it.instructions.push(ins);editingInstr[ins.id]=true;
+    touch();renderDetail();
+  }
+  else if(a==='instr-edit'){editingInstr[b.dataset.sub]=true;renderDetail();}
+  else if(a==='instr-done'){delete editingInstr[b.dataset.sub];renderDetail();}
+  else if(a==='del-ask'){confirmDel=true;renderDetail();}
+  else if(a==='del-cancel'){confirmDel=false;renderDetail();}
+  else if(a==='del-item'&&it){
+    state.items=state.items.filter(function(x){return x.id!==id;});
+    touch();closeDetail();renderNav();renderMain();
+  }
+}
+function onChange(e){
+  var t=e.target,f=t.dataset&&t.dataset.f;
+  if(!f)return;
+  var it=find(t.dataset.id);if(!it)return;
+  if(f==='name'){it.name=t.value.trim()||'Без названия';renderNav();renderMain();}
+  else if(f==='notes'){it.notes=t.value;renderMain();}
+  else if(f==='price'){it.price=t.value;renderMain();}
+  else if(f==='cat'){it.cat=t.value;renderAll();}
+  else if(f==='spec-k'||f==='spec-v'){
+    it.specs.forEach(function(s){if(s.id===t.dataset.sub){if(f==='spec-k')s.k=t.value;else s.v=t.value;}});
+  }
+  else if(f==='instr-title'||f==='instr-text'){
+    it.instructions.forEach(function(s){if(s.id===t.dataset.sub){if(f==='instr-title')s.title=t.value;else s.text=t.value;}});
+  }
+  touch();
+}
+
+init();
+})();
+</script>
