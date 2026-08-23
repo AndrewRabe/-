@@ -1,4 +1,11 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#33684E">
 <title>Домашний реестр</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗂️</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style id="app-style">
 :root{
@@ -30,18 +37,21 @@ textarea{width:100%;resize:vertical;min-height:74px}
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
 
 /* ── шапка ── */
-header.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--bg);border-bottom:1px solid var(--line)}
+header.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--bg);border-bottom:1px solid var(--line)}
 .wordmark{font-family:'PT Serif',Georgia,serif;font-weight:700;font-size:19px;letter-spacing:.2px;white-space:nowrap}
 .wordmark .leaf{color:var(--accent)}
 #q{flex:1;max-width:340px;min-width:0}
-#chip{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px}
+#chip{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:8px;padding:4px 6px}
+#chip:hover{background:var(--surface2)}
 #chip::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);opacity:.85}
 #chip.pending::before{background:var(--sale)}
-#chip.err::before,#chip.ro::before{background:var(--danger)}
+#chip.err::before,#chip.local::before{background:var(--danger)}
 .btn{background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:8px 14px;font-weight:600;white-space:nowrap}
 .btn:hover{filter:brightness(1.07)}
 .btn.ghost{background:var(--surface2);color:var(--ink);font-weight:500}
 .btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.iconbtn{font-size:18px;padding:6px 8px;border-radius:8px}
+.iconbtn:hover{background:var(--surface2)}
 
 /* ── каркас ── */
 .shell{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;max-width:1280px;margin:0 auto}
@@ -98,7 +108,7 @@ main#main{padding:20px 18px 80px;min-width:0}
 }
 .d-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .d-head .ic{font-size:26px}
-#d-name{flex:1;font-size:18px;font-weight:600;background:transparent;border-color:transparent}
+#d-name{flex:1;min-width:0;font-size:18px;font-weight:600;background:transparent;border-color:transparent}
 #d-name:hover,#d-name:focus{border-color:var(--line);background:var(--surface)}
 .d-close{font-size:22px;color:var(--muted);padding:4px 8px}
 .d-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
@@ -126,14 +136,35 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .d-foot{display:flex;gap:10px;margin-top:18px}
 .hint{font-size:12.5px;color:var(--muted);margin:6px 0 0}
 
-/* ── модалка ── */
-#modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(15,20,15,.45);padding:20px}
-.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(420px,100%)}
+/* ── фото ── */
+.photos{display:flex;flex-wrap:wrap;gap:8px}
+.thumb{width:86px;height:86px;border-radius:10px;border:1px solid var(--line);object-fit:cover;cursor:pointer;background:var(--surface2)}
+.thumb.loading{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px}
+.addphoto{width:86px;height:86px;border-radius:10px;border:1.5px dashed var(--line);color:var(--muted);font-size:24px}
+.addphoto:hover{border-color:var(--accent);color:var(--accent)}
+#pviewer{position:fixed;inset:0;z-index:70;background:rgba(10,12,10,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px}
+#pviewer img{max-width:100%;max-height:80vh;border-radius:10px}
+#pviewer .tools{display:flex;gap:14px}
+#pviewer button{color:#fff;background:rgba(255,255,255,.14);border-radius:9px;padding:8px 16px}
+
+/* ── модалки ── */
+#modal,#settings{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;background:rgba(15,20,15,.45);padding:20px;overflow-y:auto}
+.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(460px,100%);margin:auto 0}
 .modal-box h3{margin:0 0 14px;font-family:'PT Serif',Georgia,serif;font-size:18px}
+.modal-box h4{margin:18px 0 8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .modal-box label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .modal-box input,.modal-box select{width:100%}
 .modal-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
-#robanner{background:var(--sale-soft);color:var(--sale);padding:8px 18px;font-size:13px;text-align:center}
+.status-line{font-size:13px;margin-top:8px}
+.status-line.ok{color:var(--accent)}
+.status-line.bad{color:var(--danger)}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+details.help{margin-top:10px;font-size:13px;color:var(--muted)}
+details.help summary{cursor:pointer;color:var(--accent);font-weight:600}
+details.help ol{padding-left:18px;margin:8px 0}
+details.help li{margin-bottom:4px}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;z-index:80;box-shadow:var(--shadow);max-width:90vw}
 
 @media (max-width:900px){
   .shell{grid-template-columns:1fr}
@@ -142,23 +173,45 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
   .navgroup h4{display:none}
   .navitem{white-space:nowrap;padding:6px 11px;background:var(--surface2);border-radius:99px}
   .navitem.on{background:var(--accent-soft)}
-  header.top{flex-wrap:wrap;gap:8px 12px}
+  header.top{flex-wrap:wrap;gap:8px 10px}
   #q{order:3;flex-basis:100%;max-width:none}
 }
 </style>
+</head>
+<body>
 
-<div id="app"></div>
+<header class="top">
+  <div class="wordmark">Домашний <span class="leaf">реестр</span></div>
+  <input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off">
+  <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
+  <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
+  <button class="btn" data-a="new">+ Объект</button>
+</header>
+<div class="shell">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+<div id="scrim" hidden data-a="close"></div>
+<aside id="detail" hidden></aside>
+<div id="modal" hidden></div>
+<div id="settings" hidden></div>
+<div id="pviewer" hidden></div>
+<div id="toast" hidden></div>
+<input id="photo-input" type="file" accept="image/*" hidden>
+<input id="import-input" type="file" accept="application/json,.json" hidden>
 
 <script id="app-code">
 (function(){
 'use strict';
-var FONTS='https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@700&family=JetBrains+Mono:wght@400;500&display=swap';
 var CATS={home:{label:'Дом',icon:'🏠'},car:{label:'Машина',icon:'🚗'},tech:{label:'Техника',icon:'🔧'},stuff:{label:'Вещи',icon:'📦'}};
-var LSKEY='home-registry-v1';
+var LSKEY='home-registry-v1', GHKEY='home-registry-gh';
+var STATE_PATH='data/state.json';
 
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function plural(n,f){var m10=n%10,m100=n%100;var i=(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<12||m100>14))?1:2;return n+' '+f[i];}
+function b64e(str){var u=new TextEncoder().encode(str),s='';for(var i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);}
+function b64d(b){b=String(b).replace(/\s/g,'');var bin=atob(b),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new TextDecoder().decode(u);}
 
 var SEED={rev:1,updatedAt:0,items:[
  {id:'ex-car',name:'Автомобиль',cat:'car',status:'active',price:'',
@@ -167,115 +220,194 @@ var SEED={rev:1,updatedAt:0,items:[
   instructions:[{id:uid(),title:'Давление в шинах',text:'Проверять раз в месяц и перед дальней дорогой. Рекомендованные значения указаны на стойке водительской двери.'}],
   tasks:[{id:uid(),text:'Записаться на замену масла',done:false}],
   questions:[{id:uid(),text:'Когда в последний раз меняли тормозную жидкость?',done:false}],
-  plans:[{id:uid(),text:'Щётки стеклоочистителя на зиму',done:false,kind:'buy'}]},
+  plans:[{id:uid(),text:'Щётки стеклоочистителя на зиму',done:false,kind:'buy'}],photos:[]},
  {id:'ex-wash',name:'Стиральная машина',cat:'tech',status:'active',price:'',
   notes:'',specs:[{id:uid(),k:'Модель',v:'—'}],
   instructions:[{id:uid(),title:'Чистка фильтра',text:'Раз в 2–3 месяца: открыть лючок внизу справа, подставить плоскую ёмкость, выкрутить фильтр против часовой стрелки, промыть под водой.'}],
-  tasks:[],questions:[],plans:[]},
+  tasks:[],questions:[],plans:[],photos:[]},
  {id:'ex-flat',name:'Квартира',cat:'home',status:'active',price:'',
-  notes:'',specs:[],instructions:[],tasks:[],
-  questions:[],plans:[{id:uid(),text:'Фильтры для кухонной вытяжки',done:false,kind:'buy'},{id:uid(),text:'Полки в кладовку',done:false,kind:'improve'}]}
+  notes:'',specs:[],instructions:[],tasks:[],questions:[],
+  plans:[{id:uid(),text:'Фильтры для кухонной вытяжки',done:false,kind:'buy'},{id:uid(),text:'Полки в кладовку',done:false,kind:'improve'}],photos:[]}
 ]};
 
-var state=null, pub=null, canWrite=true, saveMode='files', userEdited=false;
+var state=null, saveTimer=null, retryTimer=null, syncing=false, lastPull=0;
 var route={view:'all',item:null};
-var query='', saveTimer=null, retryTimer=null, editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null;
+var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null;
+var photoCache={}; /* path -> objectURL */
 
-var SHELL='<div id="robanner" hidden>Режим просмотра — изменения не сохраняются</div>'
- +'<header class="top"><div class="wordmark">Домашний <span class="leaf">реестр</span></div>'
- +'<input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off">'
- +'<span id="chip">Загрузка…</span>'
- +'<button class="btn" data-a="new">+ Объект</button></header>'
- +'<div class="shell"><nav id="nav"></nav><main id="main"></main></div>'
- +'<div id="scrim" hidden data-a="close"></div>'
- +'<aside id="detail" hidden></aside>'
- +'<div id="modal" hidden></div>';
+/* ══ хранилище: GitHub ══ */
+function ghCfg(){try{var c=JSON.parse(localStorage.getItem(GHKEY));return (c&&c.owner&&c.repo&&c.token)?c:null;}catch(e){return null;}}
+function ghStore(c){try{if(c)localStorage.setItem(GHKEY,JSON.stringify(c));else localStorage.removeItem(GHKEY);}catch(e){}}
+function ghHeaders(extraAccept){var c=ghCfg();return {'Authorization':'Bearer '+c.token,'Accept':extraAccept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};}
+function ghUrl(path){var c=ghCfg();return 'https://api.github.com/repos/'+encodeURIComponent(c.owner)+'/'+encodeURIComponent(c.repo)+'/contents/'+path;}
 
-/* ── загрузка состояния ── */
-function readInline(){
-  try{var n=document.getElementById('app-state');if(n)return JSON.parse(n.textContent);}catch(e){}
-  return null;
-}
-function readLocal(){
-  try{var s=localStorage.getItem(LSKEY);if(s)return JSON.parse(s);}catch(e){}
-  return null;
-}
-function writeLocal(){try{localStorage.setItem(LSKEY,JSON.stringify(state));}catch(e){}}
-function best(a,b){if(!a)return b;if(!b)return a;return (b.rev||0)>(a.rev||0)?b:a;}
-
-function init(){
-  document.getElementById('app').innerHTML=SHELL;
-  state=best(readInline(),readLocal())||SEED;
-  buildOnce();renderAll();
-  fetch('data/state.json',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
-    .then(function(remote){
-      if(remote&&!userEdited&&(remote.rev||0)>(state.rev||0)){state=remote;writeLocal();renderAll();}
-    }).catch(function(){});
-  var useCap=(window.claude&&window.claude.use)?window.claude.use('artifact'):Promise.resolve(null);
-  useCap.then(function(ns){
-    pub=ns;
-    setChip(pub?'saved':'local');
+function ghGetJson(path){
+  return fetch(ghUrl(path),{headers:ghHeaders(),cache:'no-store'}).then(function(r){
+    if(r.status===404)return null;
+    if(!r.ok)throw {status:r.status};
+    return r.json();
   });
-  setChip('saved');
+}
+function ghGetState(){
+  return ghGetJson(STATE_PATH).then(function(j){
+    if(!j)return null;
+    var text;
+    if(j.content&&j.encoding==='base64')text=b64d(j.content);
+    if(text==null)return fetch(ghUrl(STATE_PATH),{headers:ghHeaders('application/vnd.github.raw+json'),cache:'no-store'})
+      .then(function(r){if(!r.ok)throw {status:r.status};return r.text();})
+      .then(function(t){return {sha:j.sha,data:JSON.parse(t)};});
+    return {sha:j.sha,data:JSON.parse(text)};
+  });
+}
+function ghPut(path,base64,sha,message){
+  var body={message:message,content:base64};
+  if(sha)body.sha=sha;
+  return fetch(ghUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)}).then(function(r){
+    if(!r.ok)throw {status:r.status};
+    return r.json();
+  });
+}
+function ghDelete(path,sha,message){
+  return fetch(ghUrl(path),{method:'DELETE',headers:ghHeaders(),body:JSON.stringify({message:message,sha:sha})}).then(function(r){
+    if(!r.ok&&r.status!==404)throw {status:r.status};
+  });
+}
+function ghErrText(e){
+  var s=e&&e.status;
+  if(s===401)return 'Токен не принят — проверьте его в настройках';
+  if(s===403)return 'Нет прав или исчерпан лимит запросов';
+  if(s===404)return 'Репозиторий не найден — проверьте настройки';
+  if(s===409)return 'Конфликт версий';
+  return 'Нет связи с GitHub';
 }
 
-/* ── сохранение ── */
+/* ══ локальный кэш ══ */
+function readLocal(){try{var s=localStorage.getItem(LSKEY);if(s)return JSON.parse(s);}catch(e){}return null;}
+function writeLocal(){try{localStorage.setItem(LSKEY,JSON.stringify(state));}catch(e){}}
+
+/* ══ синхронизация ══ */
 function setChip(mode,msg){
   var c=document.getElementById('chip');
   c.className='';
   if(mode==='pending'){c.classList.add('pending');c.textContent='Сохранение…';}
-  else if(mode==='saved'){c.textContent='Сохранено';}
-  else if(mode==='local'){c.textContent='Только на этом устройстве';}
-  else if(mode==='ro'){c.classList.add('ro');c.textContent='Только просмотр';}
-  else if(mode==='err'){c.classList.add('err');c.textContent=msg||'Ошибка сохранения';}
+  else if(mode==='saved'){c.textContent='Синхронизировано';}
+  else if(mode==='local'){c.classList.add('local');c.textContent='Только на этом устройстве';}
+  else if(mode==='err'){c.classList.add('err');c.textContent=msg||'Ошибка';}
+}
+function adoptRemote(remote){
+  state=remote;
+  if(!state.items)state.items=[];
+  writeLocal();renderAll();
+}
+function pull(quiet){
+  if(!ghCfg()){setChip('local');return Promise.resolve();}
+  lastPull=Date.now();
+  return ghGetState().then(function(got){
+    if(got&&(got.data.rev||0)>(state.rev||0)){
+      adoptRemote(got.data);
+      if(!quiet)toast('Данные обновлены из хранилища');
+    }
+    setChip('saved');
+  }).catch(function(e){setChip('err',ghErrText(e));});
 }
 function touch(){
-  userEdited=true;
   state.rev=(state.rev||0)+1;state.updatedAt=Date.now();
   writeLocal();
-  if(!canWrite)return;
+  if(!ghCfg()){setChip('local');return;}
   setChip('pending');
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(save,1400);
+  saveTimer=setTimeout(push,1400);
 }
-function save(){
-  if(!pub){setChip('local');return;}
-  var snapshot=JSON.stringify(state);
-  var p = saveMode==='files' ? pub.publish({'data/state.json':snapshot}) : pub.publish(buildPage());
-  p.then(function(){setChip('saved');})
-   .catch(function(e){
-     var code=e&&e.code;
-     if((code==='capability_disabled'||code==='read_only_path'||code==='capability_removed')&&saveMode==='files'){
-       saveMode='html';save();return;
-     }
-     if(code==='not_writer'||code==='not_granted'||code==='consent_required'||code==='not_declared'){
-       canWrite=false;setChip('ro');
-       document.getElementById('robanner').hidden=false;return;
-     }
-     if(code==='conflict'){return;} /* оболочка сама перезагрузит все виды на новую версию */
-     if(code==='rate_limited'){clearTimeout(retryTimer);retryTimer=setTimeout(save,8000);setChip('pending');return;}
-     if(code==='upstream_error'){clearTimeout(retryTimer);retryTimer=setTimeout(save,3000+Math.random()*2000);setChip('pending');return;}
-     setChip('err');
-   });
-}
-function buildPage(){
-  var css=document.getElementById('app-style').textContent;
-  var code=document.getElementById('app-code').textContent;
-  var json=JSON.stringify(state).replace(/</g,'\\u003c');
-  var SC='<'+'/script>', ST='<'+'/style>';
-  return '<!doctype html>\n<html lang="ru"><head><meta charset="utf-8">'
-    +'<meta name="viewport" content="width=device-width, initial-scale=1">'
-    +'<title>Домашний реестр</title>'
-    +'<link rel="stylesheet" href="'+FONTS+'">'
-    +'<style id="app-style">'+css+ST+'</head><body>'
-    +'<div id="app"></div>'
-    +'<script id="app-state" type="application/json">'+json+SC
-    +'<script id="app-code">'+code+SC
-    +'</body></html>';
+function push(attempt){
+  if(!ghCfg()){setChip('local');return;}
+  if(syncing){clearTimeout(saveTimer);saveTimer=setTimeout(push,1000);return;}
+  syncing=true;
+  ghGetState().then(function(got){
+    if(got&&(got.data.rev||0)>(state.rev||0)){
+      adoptRemote(got.data);
+      toast('На другом устройстве версия новее — загрузил её');
+      setChip('saved');return;
+    }
+    return ghPut(STATE_PATH,b64e(JSON.stringify(state)),got?got.sha:null,'Обновление данных реестра')
+      .then(function(){setChip('saved');});
+  }).catch(function(e){
+    if(e&&e.status===409&&!attempt){syncing=false;push(1);return;}
+    if((e&&e.status>=500)||!e||!e.status){
+      clearTimeout(retryTimer);retryTimer=setTimeout(function(){push();},4000+Math.random()*2000);
+      setChip('pending');return;
+    }
+    setChip('err',ghErrText(e));
+  }).finally(function(){syncing=false;});
 }
 
-/* ── помощники по данным ── */
-function items(){return state.items;}
+/* ══ фото ══ */
+function compressImage(file){
+  return new Promise(function(res,rej){
+    var img=new Image(),url=URL.createObjectURL(file);
+    img.onload=function(){
+      var w=img.naturalWidth,h=img.naturalHeight,sc=Math.min(1,1600/Math.max(w,h));
+      var c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*sc));c.height=Math.max(1,Math.round(h*sc));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){b?res(b):rej(new Error('convert'));},'image/jpeg',0.82);
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'));};
+    img.src=url;
+  });
+}
+function blobToB64(blob){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onload=function(){res(String(fr.result).split(',')[1]);};
+    fr.onerror=rej;
+    fr.readAsDataURL(blob);
+  });
+}
+function addPhoto(it,file){
+  if(!ghCfg()){toast('Фото хранятся в GitHub — сначала настройте синхронизацию (⚙)');return;}
+  toast('Загружаю фото…');
+  compressImage(file).then(function(blob){
+    return blobToB64(blob).then(function(b64){
+      var path='photos/'+it.id+'/'+uid()+'.jpg';
+      return ghPut(path,b64,null,'Фото: '+it.name).then(function(){
+        it.photos=it.photos||[];
+        it.photos.push({id:uid(),path:path});
+        touch();renderDetail();
+        toast('Фото добавлено');
+      });
+    });
+  }).catch(function(e){toast('Не получилось загрузить фото: '+ghErrText(e));});
+}
+function photoUrl(path){
+  if(photoCache[path])return Promise.resolve(photoCache[path]);
+  return fetch(ghUrl(path),{headers:ghHeaders('application/vnd.github.raw+json')}).then(function(r){
+    if(!r.ok)throw {status:r.status};
+    return r.blob();
+  }).then(function(b){
+    var u=URL.createObjectURL(b);photoCache[path]=u;return u;
+  });
+}
+function hydratePhotos(root){
+  (root||document).querySelectorAll('img[data-photo]').forEach(function(img){
+    var p=img.dataset.photo;
+    photoUrl(p).then(function(u){img.src=u;img.classList.remove('loading');})
+      .catch(function(){img.alt='не загрузилось';});
+  });
+}
+function delPhoto(it,photoId){
+  var ph=(it.photos||[]).filter(function(p){return p.id===photoId;})[0];
+  it.photos=(it.photos||[]).filter(function(p){return p.id!==photoId;});
+  touch();renderDetail();closeViewer();
+  if(ph&&ghCfg()){
+    var dir=ph.path.slice(0,ph.path.lastIndexOf('/'));
+    ghGetJson(dir).then(function(list){
+      var entry=(list||[]).filter(function(f){return f.path===ph.path;})[0];
+      if(entry)return ghDelete(ph.path,entry.sha,'Удаление фото');
+    }).catch(function(){});
+  }
+}
+
+/* ══ данные ══ */
 function find(id){for(var i=0;i<state.items.length;i++)if(state.items[i].id===id)return state.items[i];return null;}
 function visible(it){return it.status!=='archive';}
 function matches(it){
@@ -286,22 +418,7 @@ function matches(it){
 }
 function openCount(arr){return (arr||[]).filter(function(x){return !x.done;}).length;}
 
-/* ── каркас ── */
-function buildOnce(){
-  document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
-  document.addEventListener('click',onClick);
-  document.addEventListener('change',onChange);
-  document.addEventListener('keydown',function(e){
-    if(e.key==='Escape'){closeDetail();closeModal();}
-    if(e.key==='Enter'&&e.target.matches('.addrow input[type=text]')){
-      var btn=e.target.parentElement.querySelector('[data-a]');
-      if(btn)btn.click();
-    }
-  });
-}
-function renderAll(){renderNav();renderMain();renderDetail();}
-
-/* ── навигация ── */
+/* ══ навигация ══ */
 function nv(view,label,count,icon){
   var on=route.view===view?' on':'';
   return '<button class="navitem'+on+'" data-a="view" data-v="'+view+'">'+(icon?icon+' ':'')+label
@@ -327,7 +444,7 @@ function renderNav(){
   document.getElementById('nav').innerHTML=h;
 }
 
-/* ── основная область ── */
+/* ══ основная область ══ */
 function cardHTML(it){
   var badge='';
   if(it.status==='sale')badge='<span class="badge sale">продажа'+(it.price?' · '+esc(it.price):'')+'</span>';
@@ -337,6 +454,7 @@ function cardHTML(it){
   var qn=openCount(it.questions);if(qn)meta.push(plural(qn,['вопрос','вопроса','вопросов']));
   var p=openCount(it.plans);if(p)meta.push(p+' в планах');
   var ins=(it.instructions||[]).length;if(ins)meta.push(plural(ins,['инструкция','инструкции','инструкций']));
+  var ph=(it.photos||[]).length;if(ph)meta.push('📷 '+ph);
   return '<article class="card" tabindex="0" role="button" data-a="open" data-id="'+it.id+'">'
     +'<div class="card-top"><span class="card-ic">'+CATS[it.cat].icon+'</span>'
     +'<div><h3>'+esc(it.name)+'</h3><span class="card-cat">'+CATS[it.cat].label+'</span></div>'+badge+'</div>'
@@ -395,7 +513,7 @@ function rowHTML(itemId,kind,x,delBtn){
     +'</div>';
 }
 
-/* ── панель объекта ── */
+/* ══ панель объекта ══ */
 function renderDetail(){
   var d=document.getElementById('detail'),s=document.getElementById('scrim');
   var it=route.item?find(route.item):null;
@@ -417,9 +535,17 @@ function renderDetail(){
     h+='<section class="d-sec"><h3>Продажа</h3><input type="text" placeholder="Цена, площадка, состояние…" value="'+esc(it.price)+'" data-f="price" data-id="'+it.id+'" style="width:100%"></section>';
   }
 
+  /* фото */
+  h+='<section class="d-sec"><h3>Фото</h3><div class="photos">';
+  (it.photos||[]).forEach(function(p){
+    h+='<img class="thumb loading" alt="фото" data-photo="'+esc(p.path)+'" data-a="view-photo" data-id="'+it.id+'" data-sub="'+p.id+'">';
+  });
+  h+='<button class="addphoto" data-a="add-photo" data-id="'+it.id+'" title="Добавить фото">+</button></div>';
+  if(!ghCfg())h+='<p class="hint">Фото сохраняются в ваш GitHub-репозиторий — настройте синхронизацию через ⚙ вверху.</p>';
+  h+='</section>';
+
   h+='<section class="d-sec"><h3>Заметки</h3><textarea data-f="notes" data-id="'+it.id+'" placeholder="Что важно помнить об этом объекте…">'+esc(it.notes)+'</textarea></section>';
 
-  /* характеристики */
   h+='<section class="d-sec"><h3>Характеристики</h3>';
   if((it.specs||[]).length){
     h+='<div class="specs">';
@@ -434,19 +560,16 @@ function renderDetail(){
     +'<button class="btn ghost" data-a="add-spec" data-id="'+it.id+'">Добавить</button></div>'
     +'<p class="hint">Название параметра и значение вводите через « — », например: «Гарантия — до 03.2027».</p></section>';
 
-  /* задачи */
   h+='<section class="d-sec"><h3>Задачи</h3>'
     +(it.tasks||[]).map(function(t){return rowHTML(it.id,'tasks',t,true);}).join('')
     +'<div class="addrow"><input type="text" id="add-task" placeholder="Новая задача…">'
     +'<button class="btn ghost" data-a="add-sub" data-kind="tasks" data-id="'+it.id+'">Добавить</button></div></section>';
 
-  /* вопросы */
   h+='<section class="d-sec"><h3>Вопросы</h3>'
     +(it.questions||[]).map(function(t){return rowHTML(it.id,'questions',t,true);}).join('')
     +'<div class="addrow"><input type="text" id="add-question" placeholder="Что нужно выяснить…">'
     +'<button class="btn ghost" data-a="add-sub" data-kind="questions" data-id="'+it.id+'">Добавить</button></div></section>';
 
-  /* планы и покупки */
   h+='<section class="d-sec"><h3>Планы и покупки</h3>'
     +(it.plans||[]).map(function(t){return rowHTML(it.id,'plans',t,true);}).join('')
     +'<div class="addrow"><input type="text" id="add-plan" placeholder="Что докупить или улучшить…">'
@@ -456,7 +579,6 @@ function renderDetail(){
     +'<button class="'+(newPlanKind==='improve'?'on':'')+'" data-a="plan-kind" data-v="improve">улучшить</button>'
     +'</div></section>';
 
-  /* инструкции */
   h+='<section class="d-sec"><h3>Инструкции и ремонт</h3>';
   (it.instructions||[]).forEach(function(ins){
     if(editingInstr[ins.id]){
@@ -478,11 +600,26 @@ function renderDetail(){
     +'</div>';
 
   d.innerHTML=h;
+  hydratePhotos(d);
   if(refocus){var f=document.getElementById(refocus);if(f)f.focus();refocus=null;}
 }
 function closeDetail(){route.item=null;confirmDel=false;editingInstr={};renderDetail();}
 
-/* ── модалка нового объекта ── */
+/* ══ просмотр фото ══ */
+function openViewer(itemId,photoId){
+  var it=find(itemId);if(!it)return;
+  var ph=(it.photos||[]).filter(function(p){return p.id===photoId;})[0];
+  if(!ph)return;
+  var v=document.getElementById('pviewer');
+  v.hidden=false;
+  v.innerHTML='<img alt="фото" data-photo="'+esc(ph.path)+'">'
+    +'<div class="tools"><button data-a="del-photo" data-id="'+itemId+'" data-sub="'+photoId+'">Удалить</button>'
+    +'<button data-a="close-viewer">Закрыть</button></div>';
+  hydratePhotos(v);
+}
+function closeViewer(){var v=document.getElementById('pviewer');v.hidden=true;v.innerHTML='';}
+
+/* ══ модалка нового объекта ══ */
 function openModal(){
   var m=document.getElementById('modal');
   m.hidden=false;
@@ -497,7 +634,91 @@ function openModal(){
 }
 function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
-/* ── события ── */
+/* ══ настройки ══ */
+function openSettings(){
+  var s=document.getElementById('settings');
+  var c=ghCfg()||{owner:'',repo:'home-registry-data',token:''};
+  s.hidden=false;
+  s.innerHTML='<div class="modal-box"><h3>Настройки</h3>'
+    +'<h4>Синхронизация через GitHub</h4>'
+    +'<p class="hint">Данные хранятся в вашем приватном репозитории. Введите его и токен доступа — один раз на каждом устройстве.</p>'
+    +'<label for="gh-owner">Логин на GitHub</label><input id="gh-owner" type="text" autocapitalize="off" autocomplete="off" value="'+esc(c.owner)+'" placeholder="например: AndrewRabe">'
+    +'<label for="gh-repo">Приватный репозиторий для данных</label><input id="gh-repo" type="text" autocapitalize="off" autocomplete="off" value="'+esc(c.repo)+'" placeholder="home-registry-data">'
+    +'<label for="gh-token">Токен доступа (fine-grained)</label><input id="gh-token" type="password" autocomplete="off" value="'+esc(c.token)+'" placeholder="github_pat_…">'
+    +'<div class="btnrow"><button class="btn" data-a="gh-save">Проверить и сохранить</button>'
+    +(ghCfg()?'<button class="btn ghost" data-a="gh-off">Отключить синхронизацию</button>':'')
+    +'</div><div id="gh-status" class="status-line"></div>'
+    +'<details class="help"><summary>Как создать репозиторий и токен</summary><ol>'
+    +'<li>На github.com нажмите «+» → New repository, имя <b>home-registry-data</b>, видимость <b>Private</b>, Create.</li>'
+    +'<li>Затем: Settings (профиля) → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token.</li>'
+    +'<li>Repository access: <b>Only select repositories</b> → выберите home-registry-data.</li>'
+    +'<li>Permissions → Repository permissions → <b>Contents: Read and write</b>.</li>'
+    +'<li>Срок действия — максимум (потом токен нужно будет обновить). Скопируйте токен сюда.</li>'
+    +'</ol></details>'
+    +'<h4>Резервная копия</h4>'
+    +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
+    +'<button class="btn ghost" data-a="import">Восстановить из файла</button></div>'
+    +'<p class="hint">Файл содержит все объекты, задачи и инструкции (без фото). Храните копию на всякий случай.</p>'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="settings-close">Закрыть</button></div></div>';
+}
+function closeSettings(){var s=document.getElementById('settings');s.hidden=true;s.innerHTML='';}
+function ghStatus(cls,msg){var el=document.getElementById('gh-status');if(el){el.className='status-line '+cls;el.textContent=msg;}}
+function verifyAndSaveGh(){
+  var owner=document.getElementById('gh-owner').value.trim();
+  var repo=document.getElementById('gh-repo').value.trim();
+  var token=document.getElementById('gh-token').value.trim();
+  if(!owner||!repo||!token){ghStatus('bad','Заполните все три поля');return;}
+  ghStatus('','Проверяю…');
+  fetch('https://api.github.com/repos/'+encodeURIComponent(owner)+'/'+encodeURIComponent(repo),{
+    headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},cache:'no-store'
+  }).then(function(r){
+    if(r.status===404){ghStatus('bad','Репозиторий не найден. Проверьте логин, имя и доступ токена именно к этому репозиторию.');return null;}
+    if(r.status===401){ghStatus('bad','Токен не принят — скопируйте его заново.');return null;}
+    if(!r.ok){ghStatus('bad','GitHub ответил ошибкой '+r.status);return null;}
+    return r.json();
+  }).then(function(meta){
+    if(!meta)return;
+    if(!meta.permissions||!meta.permissions.push){ghStatus('bad','У токена нет права записи (Contents: Read and write).');return;}
+    if(!meta.private)ghStatus('ok','Подключено. Внимание: репозиторий ПУБЛИЧНЫЙ — данные видны всем. Лучше сделать его приватным.');
+    else ghStatus('ok','Подключено. Данные будут синхронизироваться.');
+    ghStore({owner:owner,repo:repo,token:token});
+    pull().then(function(){if((state.rev||0)>0)push();});
+  }).catch(function(){ghStatus('bad','Нет связи с GitHub. Проверьте интернет.');});
+}
+
+/* ══ экспорт / импорт ══ */
+function doExport(){
+  var blob=new Blob([JSON.stringify(state,null,1)],{type:'application/json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='домашний-реестр-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},5000);
+}
+function doImport(file){
+  var fr=new FileReader();
+  fr.onload=function(){
+    try{
+      var data=JSON.parse(fr.result);
+      if(!data||!Array.isArray(data.items))throw new Error('bad');
+      data.rev=Math.max(data.rev||0,(state.rev||0))+1;
+      state=data;writeLocal();touch();renderAll();closeSettings();
+      toast('Данные восстановлены: '+plural(state.items.length,['объект','объекта','объектов']));
+    }catch(e){toast('Файл не похож на копию реестра');}
+  };
+  fr.readAsText(file);
+}
+
+/* ══ уведомления ══ */
+var toastTimer=null;
+function toast(msg){
+  var t=document.getElementById('toast');
+  t.textContent=msg;t.hidden=false;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){t.hidden=true;},3500);
+}
+
+/* ══ события ══ */
 function onClick(e){
   var b=e.target.closest('[data-a]');
   if(!b)return;
@@ -507,17 +728,22 @@ function onClick(e){
   else if(a==='close'){closeDetail();}
   else if(a==='new'){openModal();}
   else if(a==='modal-close'){closeModal();}
+  else if(a==='settings'){openSettings();}
+  else if(a==='settings-close'){closeSettings();}
+  else if(a==='gh-save'){verifyAndSaveGh();}
+  else if(a==='gh-off'){ghStore(null);closeSettings();setChip('local');toast('Синхронизация отключена, данные остались на устройстве');}
+  else if(a==='export'){doExport();}
+  else if(a==='import'){document.getElementById('import-input').click();}
   else if(a==='create'){
     var name=document.getElementById('ni-name').value.trim();
     if(!name){document.getElementById('ni-name').focus();return;}
-    var item={id:uid(),name:name,cat:document.getElementById('ni-cat').value,status:'active',price:'',notes:'',specs:[],instructions:[],tasks:[],questions:[],plans:[]};
+    var item={id:uid(),name:name,cat:document.getElementById('ni-cat').value,status:'active',price:'',notes:'',specs:[],instructions:[],tasks:[],questions:[],plans:[],photos:[]};
     state.items.unshift(item);touch();closeModal();
     route.item=item.id;renderAll();
   }
   else if(a==='status'&&it){it.status=b.dataset.v;touch();renderAll();}
   else if(a==='tgl'&&it){
-    var arr=it[b.dataset.kind]||[];
-    arr.forEach(function(x){if(x.id===b.dataset.sub)x.done=!x.done;});
+    (it[b.dataset.kind]||[]).forEach(function(x){if(x.id===b.dataset.sub)x.done=!x.done;});
     touch();renderNav();renderMain();if(route.item)renderDetail();
   }
   else if(a==='del-sub'&&it){
@@ -552,6 +778,13 @@ function onClick(e){
   }
   else if(a==='instr-edit'){editingInstr[b.dataset.sub]=true;renderDetail();}
   else if(a==='instr-done'){delete editingInstr[b.dataset.sub];renderDetail();}
+  else if(a==='add-photo'&&it){
+    var pi=document.getElementById('photo-input');
+    pi.dataset.item=it.id;pi.value='';pi.click();
+  }
+  else if(a==='view-photo'){e.stopPropagation();openViewer(id,b.dataset.sub);}
+  else if(a==='del-photo'&&it){delPhoto(it,b.dataset.sub);}
+  else if(a==='close-viewer'){closeViewer();}
   else if(a==='del-ask'){confirmDel=true;renderDetail();}
   else if(a==='del-cancel'){confirmDel=false;renderDetail();}
   else if(a==='del-item'&&it){
@@ -560,7 +793,17 @@ function onClick(e){
   }
 }
 function onChange(e){
-  var t=e.target,f=t.dataset&&t.dataset.f;
+  var t=e.target;
+  if(t.id==='photo-input'){
+    var it0=find(t.dataset.item);
+    if(it0&&t.files&&t.files[0])addPhoto(it0,t.files[0]);
+    return;
+  }
+  if(t.id==='import-input'){
+    if(t.files&&t.files[0])doImport(t.files[0]);
+    t.value='';return;
+  }
+  var f=t.dataset&&t.dataset.f;
   if(!f)return;
   var it=find(t.dataset.id);if(!it)return;
   if(f==='name'){it.name=t.value.trim()||'Без названия';renderNav();renderMain();}
@@ -576,6 +819,31 @@ function onChange(e){
   touch();
 }
 
+function renderAll(){renderNav();renderMain();renderDetail();}
+
+/* ══ старт ══ */
+function init(){
+  state=readLocal()||SEED;
+  if(!state.items)state.items=[];
+  document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
+  document.addEventListener('click',onClick);
+  document.addEventListener('change',onChange);
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){closeViewer();closeDetail();closeModal();closeSettings();}
+    if(e.key==='Enter'&&e.target.matches&&e.target.matches('.addrow input[type=text]')){
+      var btn=e.target.parentElement.querySelector('[data-a]');
+      if(btn)btn.click();
+    }
+  });
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden&&ghCfg()&&Date.now()-lastPull>30000)pull(true);
+  });
+  renderAll();
+  if(ghCfg()){setChip('pending');pull(true);}
+  else setChip('local');
+}
 init();
 })();
 </script>
+</body>
+</html>
