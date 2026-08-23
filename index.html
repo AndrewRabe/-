@@ -149,7 +149,7 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 
 /* ── модалки ── */
 #modal,#settings{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;background:rgba(15,20,15,.45);padding:20px;overflow-y:auto}
-.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(460px,100%);margin:auto 0}
+.modal-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:20px;width:min(480px,100%);margin:auto 0}
 .modal-box h3{margin:0 0 14px;font-family:'PT Serif',Georgia,serif;font-size:18px}
 .modal-box h4{margin:18px 0 8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .modal-box label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
@@ -163,6 +163,7 @@ details.help{margin-top:10px;font-size:13px;color:var(--muted)}
 details.help summary{cursor:pointer;color:var(--accent);font-weight:600}
 details.help ol{padding-left:18px;margin:8px 0}
 details.help li{margin-bottom:4px}
+.backendpick{margin-bottom:6px}
 
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;z-index:80;box-shadow:var(--shadow);max-width:90vw}
 
@@ -204,14 +205,18 @@ details.help li{margin-bottom:4px}
 (function(){
 'use strict';
 var CATS={home:{label:'Дом',icon:'🏠'},car:{label:'Машина',icon:'🚗'},tech:{label:'Техника',icon:'🔧'},stuff:{label:'Вещи',icon:'📦'}};
-var LSKEY='home-registry-v1', GHKEY='home-registry-gh';
+var LSKEY='home-registry-v1', GHKEY='home-registry-gh', YDKEY='home-registry-yd', BACKKEY='home-registry-backend';
 var STATE_PATH='data/state.json';
+var YD_API='https://cloud-api.yandex.net/v1/disk';
+var YD_STATE='app:/state.json';
 
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function plural(n,f){var m10=n%10,m100=n%100;var i=(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<12||m100>14))?1:2;return n+' '+f[i];}
 function b64e(str){var u=new TextEncoder().encode(str),s='';for(var i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);}
 function b64d(b){b=String(b).replace(/\s/g,'');var bin=atob(b),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new TextDecoder().decode(u);}
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}
+function lsSet(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
 var SEED={rev:1,updatedAt:0,items:[
  {id:'ex-car',name:'Автомобиль',cat:'car',status:'active',price:'',
@@ -232,67 +237,172 @@ var SEED={rev:1,updatedAt:0,items:[
 
 var state=null, saveTimer=null, retryTimer=null, syncing=false, lastPull=0;
 var route={view:'all',item:null};
-var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null;
-var photoCache={}; /* path -> objectURL */
+var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null, settingsBackend=null;
+var photoCache={};
 
-/* ══ хранилище: GitHub ══ */
-function ghCfg(){try{var c=JSON.parse(localStorage.getItem(GHKEY));return (c&&c.owner&&c.repo&&c.token)?c:null;}catch(e){return null;}}
-function ghStore(c){try{if(c)localStorage.setItem(GHKEY,JSON.stringify(c));else localStorage.removeItem(GHKEY);}catch(e){}}
-function ghHeaders(extraAccept){var c=ghCfg();return {'Authorization':'Bearer '+c.token,'Accept':extraAccept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};}
+/* ══════════ бэкенд: GitHub ══════════ */
+function ghCfg(){var c=lsGet(GHKEY);return (c&&c.owner&&c.repo&&c.token)?c:null;}
+function ghHeaders(accept){var c=ghCfg();return {'Authorization':'Bearer '+c.token,'Accept':accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};}
 function ghUrl(path){var c=ghCfg();return 'https://api.github.com/repos/'+encodeURIComponent(c.owner)+'/'+encodeURIComponent(c.repo)+'/contents/'+path;}
-
 function ghGetJson(path){
   return fetch(ghUrl(path),{headers:ghHeaders(),cache:'no-store'}).then(function(r){
     if(r.status===404)return null;
-    if(!r.ok)throw {status:r.status};
+    if(!r.ok)throw {status:r.status,backend:'gh'};
     return r.json();
   });
 }
-function ghGetState(){
-  return ghGetJson(STATE_PATH).then(function(j){
+var GH={
+  name:'github',
+  ready:function(){return !!ghCfg();},
+  getState:function(){
+    return ghGetJson(STATE_PATH).then(function(j){
+      if(!j)return null;
+      var text=(j.content&&j.encoding==='base64')?b64d(j.content):null;
+      if(text==null)return fetch(ghUrl(STATE_PATH),{headers:ghHeaders('application/vnd.github.raw+json'),cache:'no-store'})
+        .then(function(r){if(!r.ok)throw {status:r.status,backend:'gh'};return r.text();})
+        .then(function(t){return {data:JSON.parse(t),tag:j.sha};});
+      return {data:JSON.parse(text),tag:j.sha};
+    });
+  },
+  putState:function(json,tag){
+    var body={message:'Обновление данных реестра',content:b64e(json)};
+    if(tag)body.sha=tag;
+    return fetch(ghUrl(STATE_PATH),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)}).then(function(r){
+      if(!r.ok)throw {status:r.status,backend:'gh'};
+    });
+  },
+  uploadPhoto:function(it,blob){
+    var path='photos/'+it.id+'/'+uid()+'.jpg';
+    return blobToB64(blob).then(function(b64){
+      return fetch(ghUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify({message:'Фото: '+it.name,content:b64})});
+    }).then(function(r){
+      if(!r.ok)throw {status:r.status,backend:'gh'};
+      return path;
+    });
+  },
+  photoBlob:function(path){
+    return fetch(ghUrl(path),{headers:ghHeaders('application/vnd.github.raw+json')}).then(function(r){
+      if(!r.ok)throw {status:r.status,backend:'gh'};
+      return r.blob();
+    });
+  },
+  deletePhoto:function(path){
+    var dir=path.slice(0,path.lastIndexOf('/'));
+    return ghGetJson(dir).then(function(list){
+      var entry=(list||[]).filter(function(f){return f.path===path;})[0];
+      if(!entry)return;
+      return fetch(ghUrl(path),{method:'DELETE',headers:ghHeaders(),body:JSON.stringify({message:'Удаление фото',sha:entry.sha})});
+    });
+  },
+  errText:function(e){
+    var s=e&&e.status;
+    if(s===401)return 'Токен GitHub не принят — проверьте настройки';
+    if(s===403)return 'GitHub: нет прав или исчерпан лимит';
+    if(s===404)return 'Репозиторий не найден — проверьте настройки';
+    return 'Нет связи с GitHub';
+  }
+};
+
+/* ══════════ бэкенд: Яндекс Диск ══════════ */
+function ydCfg(){return lsGet(YDKEY);}
+function ydReady(){var c=ydCfg();return !!(c&&c.token&&(!c.exp||Date.now()<c.exp));}
+function ydHeaders(){return {'Authorization':'OAuth '+ydCfg().token};}
+function ydFetch(url,opts){
+  opts=opts||{};opts.headers=Object.assign({},ydHeaders(),opts.headers||{});opts.cache='no-store';
+  return fetch(url,opts).then(function(r){
+    if(r.status===404)return null;
+    if(!r.ok)throw {status:r.status,backend:'yd'};
+    return r.status===204||r.status===202?{}:r.json();
+  });
+}
+var ydPhotosDirOk=false;
+function ydEnsurePhotosDir(){
+  if(ydPhotosDirOk)return Promise.resolve();
+  return fetch(YD_API+'/resources?path='+encodeURIComponent('app:/photos'),{method:'PUT',headers:ydHeaders()})
+    .then(function(r){
+      if(r.ok||r.status===409){ydPhotosDirOk=true;return;}
+      throw {status:r.status,backend:'yd'};
+    });
+}
+function ydDownload(path){
+  return ydFetch(YD_API+'/resources/download?path='+encodeURIComponent(path)).then(function(j){
     if(!j)return null;
-    var text;
-    if(j.content&&j.encoding==='base64')text=b64d(j.content);
-    if(text==null)return fetch(ghUrl(STATE_PATH),{headers:ghHeaders('application/vnd.github.raw+json'),cache:'no-store'})
-      .then(function(r){if(!r.ok)throw {status:r.status};return r.text();})
-      .then(function(t){return {sha:j.sha,data:JSON.parse(t)};});
-    return {sha:j.sha,data:JSON.parse(text)};
+    return fetch(j.href,{cache:'no-store'}).then(function(r){
+      if(!r.ok)throw {status:r.status,backend:'yd'};
+      return r;
+    });
   });
 }
-function ghPut(path,base64,sha,message){
-  var body={message:message,content:base64};
-  if(sha)body.sha=sha;
-  return fetch(ghUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)}).then(function(r){
-    if(!r.ok)throw {status:r.status};
-    return r.json();
+function ydUpload(path,body){
+  return ydFetch(YD_API+'/resources/upload?path='+encodeURIComponent(path)+'&overwrite=true').then(function(j){
+    if(!j)throw {status:409,backend:'yd'};
+    return fetch(j.href,{method:'PUT',body:body}).then(function(r){
+      if(!r.ok)throw {status:r.status,backend:'yd'};
+    });
   });
 }
-function ghDelete(path,sha,message){
-  return fetch(ghUrl(path),{method:'DELETE',headers:ghHeaders(),body:JSON.stringify({message:message,sha:sha})}).then(function(r){
-    if(!r.ok&&r.status!==404)throw {status:r.status};
-  });
+var YD={
+  name:'yandex',
+  ready:ydReady,
+  getState:function(){
+    return ydDownload(YD_STATE).then(function(r){
+      if(!r)return null;
+      return r.json().then(function(data){return {data:data,tag:null};});
+    });
+  },
+  putState:function(json){
+    return ydUpload(YD_STATE,new Blob([json],{type:'application/json'}));
+  },
+  uploadPhoto:function(it,blob){
+    var path='app:/photos/'+it.id+'-'+uid()+'.jpg';
+    return ydEnsurePhotosDir().then(function(){return ydUpload(path,blob);}).then(function(){return path;});
+  },
+  photoBlob:function(path){
+    return ydDownload(path).then(function(r){
+      if(!r)throw {status:404,backend:'yd'};
+      return r.blob();
+    });
+  },
+  deletePhoto:function(path){
+    return fetch(YD_API+'/resources?path='+encodeURIComponent(path)+'&permanently=true',{method:'DELETE',headers:ydHeaders()});
+  },
+  errText:function(e){
+    var s=e&&e.status;
+    if(s===401)return 'Вход в Яндекс истёк — войдите заново (⚙)';
+    if(s===403)return 'Яндекс Диск: нет прав у токена';
+    if(s===507)return 'На Диске закончилось место';
+    return 'Нет связи с Яндекс Диском';
+  }
+};
+
+/* ══════════ активное хранилище ══════════ */
+function backendName(){return lsGet(BACKKEY);}
+function provider(){
+  var b=backendName();
+  if(b==='github'&&GH.ready())return GH;
+  if(b==='yandex'&&YD.ready())return YD;
+  return null;
 }
-function ghErrText(e){
-  var s=e&&e.status;
-  if(s===401)return 'Токен не принят — проверьте его в настройках';
-  if(s===403)return 'Нет прав или исчерпан лимит запросов';
-  if(s===404)return 'Репозиторий не найден — проверьте настройки';
-  if(s===409)return 'Конфликт версий';
-  return 'Нет связи с GitHub';
+function photoProvider(path){
+  if(String(path).indexOf('app:/')===0)return YD.ready()?YD:null;
+  return GH.ready()?GH:null;
 }
 
-/* ══ локальный кэш ══ */
-function readLocal(){try{var s=localStorage.getItem(LSKEY);if(s)return JSON.parse(s);}catch(e){}return null;}
-function writeLocal(){try{localStorage.setItem(LSKEY,JSON.stringify(state));}catch(e){}}
+/* ══════════ локальный кэш и синхронизация ══════════ */
+function readLocal(){return lsGet(LSKEY);}
+function writeLocal(){lsSet(LSKEY,state);}
 
-/* ══ синхронизация ══ */
 function setChip(mode,msg){
   var c=document.getElementById('chip');
   c.className='';
   if(mode==='pending'){c.classList.add('pending');c.textContent='Сохранение…';}
-  else if(mode==='saved'){c.textContent='Синхронизировано';}
+  else if(mode==='saved'){c.textContent=backendName()==='yandex'?'Синхронизировано · Я.Диск':'Синхронизировано · GitHub';}
   else if(mode==='local'){c.classList.add('local');c.textContent='Только на этом устройстве';}
   else if(mode==='err'){c.classList.add('err');c.textContent=msg||'Ошибка';}
+}
+function errChip(e){
+  var p=(e&&e.backend==='yd')?YD:GH;
+  setChip('err',p.errText(e));
 }
 function adoptRemote(remote){
   state=remote;
@@ -300,35 +410,37 @@ function adoptRemote(remote){
   writeLocal();renderAll();
 }
 function pull(quiet){
-  if(!ghCfg()){setChip('local');return Promise.resolve();}
+  var p=provider();
+  if(!p){setChip('local');return Promise.resolve();}
   lastPull=Date.now();
-  return ghGetState().then(function(got){
+  return p.getState().then(function(got){
     if(got&&(got.data.rev||0)>(state.rev||0)){
       adoptRemote(got.data);
       if(!quiet)toast('Данные обновлены из хранилища');
     }
     setChip('saved');
-  }).catch(function(e){setChip('err',ghErrText(e));});
+  }).catch(errChip);
 }
 function touch(){
   state.rev=(state.rev||0)+1;state.updatedAt=Date.now();
   writeLocal();
-  if(!ghCfg()){setChip('local');return;}
+  if(!provider()){setChip('local');return;}
   setChip('pending');
   clearTimeout(saveTimer);
   saveTimer=setTimeout(push,1400);
 }
 function push(attempt){
-  if(!ghCfg()){setChip('local');return;}
+  var p=provider();
+  if(!p){setChip('local');return;}
   if(syncing){clearTimeout(saveTimer);saveTimer=setTimeout(push,1000);return;}
   syncing=true;
-  ghGetState().then(function(got){
+  p.getState().then(function(got){
     if(got&&(got.data.rev||0)>(state.rev||0)){
       adoptRemote(got.data);
       toast('На другом устройстве версия новее — загрузил её');
       setChip('saved');return;
     }
-    return ghPut(STATE_PATH,b64e(JSON.stringify(state)),got?got.sha:null,'Обновление данных реестра')
+    return p.putState(JSON.stringify(state),got?got.tag:null)
       .then(function(){setChip('saved');});
   }).catch(function(e){
     if(e&&e.status===409&&!attempt){syncing=false;push(1);return;}
@@ -336,11 +448,11 @@ function push(attempt){
       clearTimeout(retryTimer);retryTimer=setTimeout(function(){push();},4000+Math.random()*2000);
       setChip('pending');return;
     }
-    setChip('err',ghErrText(e));
+    errChip(e);
   }).finally(function(){syncing=false;});
 }
 
-/* ══ фото ══ */
+/* ══════════ фото ══════════ */
 function compressImage(file){
   return new Promise(function(res,rej){
     var img=new Image(),url=URL.createObjectURL(file);
@@ -364,33 +476,29 @@ function blobToB64(blob){
   });
 }
 function addPhoto(it,file){
-  if(!ghCfg()){toast('Фото хранятся в GitHub — сначала настройте синхронизацию (⚙)');return;}
+  var p=provider();
+  if(!p){toast('Фото хранятся в облаке — сначала настройте синхронизацию (⚙)');return;}
   toast('Загружаю фото…');
   compressImage(file).then(function(blob){
-    return blobToB64(blob).then(function(b64){
-      var path='photos/'+it.id+'/'+uid()+'.jpg';
-      return ghPut(path,b64,null,'Фото: '+it.name).then(function(){
-        it.photos=it.photos||[];
-        it.photos.push({id:uid(),path:path});
-        touch();renderDetail();
-        toast('Фото добавлено');
-      });
+    return p.uploadPhoto(it,blob).then(function(path){
+      it.photos=it.photos||[];
+      it.photos.push({id:uid(),path:path});
+      touch();renderDetail();
+      toast('Фото добавлено');
     });
-  }).catch(function(e){toast('Не получилось загрузить фото: '+ghErrText(e));});
+  }).catch(function(e){toast('Не получилось загрузить фото: '+((e&&e.backend)?(e.backend==='yd'?YD:GH).errText(e):'ошибка обработки файла'));});
 }
 function photoUrl(path){
   if(photoCache[path])return Promise.resolve(photoCache[path]);
-  return fetch(ghUrl(path),{headers:ghHeaders('application/vnd.github.raw+json')}).then(function(r){
-    if(!r.ok)throw {status:r.status};
-    return r.blob();
-  }).then(function(b){
+  var p=photoProvider(path);
+  if(!p)return Promise.reject(new Error('backend'));
+  return p.photoBlob(path).then(function(b){
     var u=URL.createObjectURL(b);photoCache[path]=u;return u;
   });
 }
 function hydratePhotos(root){
   (root||document).querySelectorAll('img[data-photo]').forEach(function(img){
-    var p=img.dataset.photo;
-    photoUrl(p).then(function(u){img.src=u;img.classList.remove('loading');})
+    photoUrl(img.dataset.photo).then(function(u){img.src=u;img.classList.remove('loading');})
       .catch(function(){img.alt='не загрузилось';});
   });
 }
@@ -398,16 +506,13 @@ function delPhoto(it,photoId){
   var ph=(it.photos||[]).filter(function(p){return p.id===photoId;})[0];
   it.photos=(it.photos||[]).filter(function(p){return p.id!==photoId;});
   touch();renderDetail();closeViewer();
-  if(ph&&ghCfg()){
-    var dir=ph.path.slice(0,ph.path.lastIndexOf('/'));
-    ghGetJson(dir).then(function(list){
-      var entry=(list||[]).filter(function(f){return f.path===ph.path;})[0];
-      if(entry)return ghDelete(ph.path,entry.sha,'Удаление фото');
-    }).catch(function(){});
+  if(ph){
+    var p=photoProvider(ph.path);
+    if(p)p.deletePhoto(ph.path).catch(function(){});
   }
 }
 
-/* ══ данные ══ */
+/* ══════════ данные ══════════ */
 function find(id){for(var i=0;i<state.items.length;i++)if(state.items[i].id===id)return state.items[i];return null;}
 function visible(it){return it.status!=='archive';}
 function matches(it){
@@ -418,7 +523,7 @@ function matches(it){
 }
 function openCount(arr){return (arr||[]).filter(function(x){return !x.done;}).length;}
 
-/* ══ навигация ══ */
+/* ══════════ навигация ══════════ */
 function nv(view,label,count,icon){
   var on=route.view===view?' on':'';
   return '<button class="navitem'+on+'" data-a="view" data-v="'+view+'">'+(icon?icon+' ':'')+label
@@ -444,7 +549,7 @@ function renderNav(){
   document.getElementById('nav').innerHTML=h;
 }
 
-/* ══ основная область ══ */
+/* ══════════ основная область ══════════ */
 function cardHTML(it){
   var badge='';
   if(it.status==='sale')badge='<span class="badge sale">продажа'+(it.price?' · '+esc(it.price):'')+'</span>';
@@ -513,7 +618,7 @@ function rowHTML(itemId,kind,x,delBtn){
     +'</div>';
 }
 
-/* ══ панель объекта ══ */
+/* ══════════ панель объекта ══════════ */
 function renderDetail(){
   var d=document.getElementById('detail'),s=document.getElementById('scrim');
   var it=route.item?find(route.item):null;
@@ -535,13 +640,12 @@ function renderDetail(){
     h+='<section class="d-sec"><h3>Продажа</h3><input type="text" placeholder="Цена, площадка, состояние…" value="'+esc(it.price)+'" data-f="price" data-id="'+it.id+'" style="width:100%"></section>';
   }
 
-  /* фото */
   h+='<section class="d-sec"><h3>Фото</h3><div class="photos">';
   (it.photos||[]).forEach(function(p){
     h+='<img class="thumb loading" alt="фото" data-photo="'+esc(p.path)+'" data-a="view-photo" data-id="'+it.id+'" data-sub="'+p.id+'">';
   });
   h+='<button class="addphoto" data-a="add-photo" data-id="'+it.id+'" title="Добавить фото">+</button></div>';
-  if(!ghCfg())h+='<p class="hint">Фото сохраняются в ваш GitHub-репозиторий — настройте синхронизацию через ⚙ вверху.</p>';
+  if(!provider())h+='<p class="hint">Фото сохраняются в облако — настройте синхронизацию через ⚙ вверху.</p>';
   h+='</section>';
 
   h+='<section class="d-sec"><h3>Заметки</h3><textarea data-f="notes" data-id="'+it.id+'" placeholder="Что важно помнить об этом объекте…">'+esc(it.notes)+'</textarea></section>';
@@ -605,7 +709,7 @@ function renderDetail(){
 }
 function closeDetail(){route.item=null;confirmDel=false;editingInstr={};renderDetail();}
 
-/* ══ просмотр фото ══ */
+/* ══════════ просмотр фото ══════════ */
 function openViewer(itemId,photoId){
   var it=find(itemId);if(!it)return;
   var ph=(it.photos||[]).filter(function(p){return p.id===photoId;})[0];
@@ -619,7 +723,7 @@ function openViewer(itemId,photoId){
 }
 function closeViewer(){var v=document.getElementById('pviewer');v.hidden=true;v.innerHTML='';}
 
-/* ══ модалка нового объекта ══ */
+/* ══════════ модалка нового объекта ══════════ */
 function openModal(){
   var m=document.getElementById('modal');
   m.hidden=false;
@@ -634,59 +738,109 @@ function openModal(){
 }
 function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
-/* ══ настройки ══ */
+/* ══════════ настройки ══════════ */
 function openSettings(){
+  if(!settingsBackend)settingsBackend=backendName()||'yandex';
   var s=document.getElementById('settings');
-  var c=ghCfg()||{owner:'',repo:'home-registry-data',token:''};
   s.hidden=false;
-  s.innerHTML='<div class="modal-box"><h3>Настройки</h3>'
-    +'<h4>Синхронизация через GitHub</h4>'
-    +'<p class="hint">Данные хранятся в вашем приватном репозитории. Введите его и токен доступа — один раз на каждом устройстве.</p>'
-    +'<label for="gh-owner">Логин на GitHub</label><input id="gh-owner" type="text" autocapitalize="off" autocomplete="off" value="'+esc(c.owner)+'" placeholder="например: AndrewRabe">'
-    +'<label for="gh-repo">Приватный репозиторий для данных</label><input id="gh-repo" type="text" autocapitalize="off" autocomplete="off" value="'+esc(c.repo)+'" placeholder="home-registry-data">'
-    +'<label for="gh-token">Токен доступа (fine-grained)</label><input id="gh-token" type="password" autocomplete="off" value="'+esc(c.token)+'" placeholder="github_pat_…">'
-    +'<div class="btnrow"><button class="btn" data-a="gh-save">Проверить и сохранить</button>'
-    +(ghCfg()?'<button class="btn ghost" data-a="gh-off">Отключить синхронизацию</button>':'')
-    +'</div><div id="gh-status" class="status-line"></div>'
-    +'<details class="help"><summary>Как создать репозиторий и токен</summary><ol>'
-    +'<li>На github.com нажмите «+» → New repository, имя <b>home-registry-data</b>, видимость <b>Private</b>, Create.</li>'
-    +'<li>Затем: Settings (профиля) → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token.</li>'
-    +'<li>Repository access: <b>Only select repositories</b> → выберите home-registry-data.</li>'
-    +'<li>Permissions → Repository permissions → <b>Contents: Read and write</b>.</li>'
-    +'<li>Срок действия — максимум (потом токен нужно будет обновить). Скопируйте токен сюда.</li>'
-    +'</ol></details>'
-    +'<h4>Резервная копия</h4>'
+  var gh=lsGet(GHKEY)||{owner:'',repo:'home-registry-data',token:''};
+  var yd=ydCfg()||{clientId:'',token:''};
+  var h='<div class="modal-box"><h3>Настройки</h3>'
+    +'<h4>Где хранить данные</h4>'
+    +'<span class="seg backendpick">'
+    +'<button class="'+(settingsBackend==='yandex'?'on':'')+'" data-a="pick-backend" data-v="yandex">Яндекс Диск</button>'
+    +'<button class="'+(settingsBackend==='github'?'on':'')+'" data-a="pick-backend" data-v="github">GitHub</button>'
+    +'</span>';
+
+  if(settingsBackend==='yandex'){
+    h+='<p class="hint">Данные и фото лягут в папку «Приложения» на вашем Диске. Приложение видит только её.</p>'
+      +'<label for="yd-client">ID приложения (ClientID)</label>'
+      +'<input id="yd-client" type="text" autocapitalize="off" autocomplete="off" value="'+esc(yd.clientId||'')+'" placeholder="из oauth.yandex.ru">'
+      +'<div class="btnrow"><button class="btn" data-a="yd-login">Войти через Яндекс</button>'
+      +(YD.ready()?'<button class="btn ghost" data-a="yd-off">Выйти</button>':'')
+      +'</div><div id="be-status" class="status-line">'
+      +(YD.ready()?'Вход выполнен.':(ydCfg()&&ydCfg().token?'Вход истёк — войдите заново.':''))+'</div>'
+      +'<details class="help"><summary>Как получить ClientID (один раз, ~5 минут)</summary><ol>'
+      +'<li>Откройте <b>oauth.yandex.ru</b> → «Создать приложение».</li>'
+      +'<li>Название — любое, например «Домашний реестр».</li>'
+      +'<li>Платформа: <b>Веб-сервисы</b>. Redirect URI: точный адрес этой страницы (скопируйте из адресной строки).</li>'
+      +'<li>Доступы: Яндекс.Диск REST API → <b>Доступ к папке приложения на Диске</b>.</li>'
+      +'<li>Создайте и скопируйте <b>ClientID</b> в поле выше.</li>'
+      +'</ol></details>';
+  }else{
+    h+='<p class="hint">Данные хранятся в вашем приватном репозитории GitHub.</p>'
+      +'<label for="gh-owner">Логин на GitHub</label><input id="gh-owner" type="text" autocapitalize="off" autocomplete="off" value="'+esc(gh.owner)+'" placeholder="например: AndrewRabe">'
+      +'<label for="gh-repo">Приватный репозиторий для данных</label><input id="gh-repo" type="text" autocapitalize="off" autocomplete="off" value="'+esc(gh.repo)+'" placeholder="home-registry-data">'
+      +'<label for="gh-token">Токен доступа (fine-grained)</label><input id="gh-token" type="password" autocomplete="off" value="'+esc(gh.token)+'" placeholder="github_pat_…">'
+      +'<div class="btnrow"><button class="btn" data-a="gh-save">Проверить и сохранить</button>'
+      +(ghCfg()?'<button class="btn ghost" data-a="gh-off">Отключить</button>':'')
+      +'</div><div id="be-status" class="status-line"></div>'
+      +'<details class="help"><summary>Как создать репозиторий и токен</summary><ol>'
+      +'<li>github.com → «+» → New repository, имя <b>home-registry-data</b>, видимость <b>Private</b>, Create.</li>'
+      +'<li>Settings (профиля) → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token.</li>'
+      +'<li>Repository access: <b>Only select repositories</b> → home-registry-data.</li>'
+      +'<li>Permissions → Repository permissions → <b>Contents: Read and write</b>.</li>'
+      +'<li>Срок действия — максимум. Скопируйте токен сюда.</li>'
+      +'</ol></details>';
+  }
+
+  h+='<h4>Резервная копия</h4>'
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
     +'<button class="btn ghost" data-a="import">Восстановить из файла</button></div>'
     +'<p class="hint">Файл содержит все объекты, задачи и инструкции (без фото). Храните копию на всякий случай.</p>'
     +'<div class="modal-foot"><button class="btn ghost" data-a="settings-close">Закрыть</button></div></div>';
+  s.innerHTML=h;
 }
-function closeSettings(){var s=document.getElementById('settings');s.hidden=true;s.innerHTML='';}
-function ghStatus(cls,msg){var el=document.getElementById('gh-status');if(el){el.className='status-line '+cls;el.textContent=msg;}}
+function closeSettings(){var s=document.getElementById('settings');s.hidden=true;s.innerHTML='';settingsBackend=null;}
+function beStatus(cls,msg){var el=document.getElementById('be-status');if(el){el.className='status-line '+cls;el.textContent=msg;}}
+
+function ydLogin(){
+  var cid=document.getElementById('yd-client').value.trim();
+  if(!cid){beStatus('bad','Сначала вставьте ClientID (инструкция ниже)');return;}
+  var cfg=ydCfg()||{};cfg.clientId=cid;lsSet(YDKEY,cfg);
+  var redirect=location.origin+location.pathname;
+  location.href='https://oauth.yandex.ru/authorize?response_type=token&client_id='+encodeURIComponent(cid)
+    +'&redirect_uri='+encodeURIComponent(redirect)+'&state=ydauth';
+}
+function ydCaptureToken(){
+  if(location.hash.indexOf('access_token=')<0)return false;
+  var p=new URLSearchParams(location.hash.slice(1));
+  var t=p.get('access_token');
+  if(!t)return false;
+  var cfg=ydCfg()||{};
+  cfg.token=t;
+  var ex=parseInt(p.get('expires_in'),10);
+  cfg.exp=ex?Date.now()+ex*1000:0;
+  lsSet(YDKEY,cfg);
+  lsSet(BACKKEY,'yandex');
+  try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
+  return true;
+}
 function verifyAndSaveGh(){
   var owner=document.getElementById('gh-owner').value.trim();
   var repo=document.getElementById('gh-repo').value.trim();
   var token=document.getElementById('gh-token').value.trim();
-  if(!owner||!repo||!token){ghStatus('bad','Заполните все три поля');return;}
-  ghStatus('','Проверяю…');
+  if(!owner||!repo||!token){beStatus('bad','Заполните все три поля');return;}
+  beStatus('','Проверяю…');
   fetch('https://api.github.com/repos/'+encodeURIComponent(owner)+'/'+encodeURIComponent(repo),{
     headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},cache:'no-store'
   }).then(function(r){
-    if(r.status===404){ghStatus('bad','Репозиторий не найден. Проверьте логин, имя и доступ токена именно к этому репозиторию.');return null;}
-    if(r.status===401){ghStatus('bad','Токен не принят — скопируйте его заново.');return null;}
-    if(!r.ok){ghStatus('bad','GitHub ответил ошибкой '+r.status);return null;}
+    if(r.status===404){beStatus('bad','Репозиторий не найден. Проверьте логин, имя и доступ токена именно к этому репозиторию.');return null;}
+    if(r.status===401){beStatus('bad','Токен не принят — скопируйте его заново.');return null;}
+    if(!r.ok){beStatus('bad','GitHub ответил ошибкой '+r.status);return null;}
     return r.json();
   }).then(function(meta){
     if(!meta)return;
-    if(!meta.permissions||!meta.permissions.push){ghStatus('bad','У токена нет права записи (Contents: Read and write).');return;}
-    if(!meta.private)ghStatus('ok','Подключено. Внимание: репозиторий ПУБЛИЧНЫЙ — данные видны всем. Лучше сделать его приватным.');
-    else ghStatus('ok','Подключено. Данные будут синхронизироваться.');
-    ghStore({owner:owner,repo:repo,token:token});
-    pull().then(function(){if((state.rev||0)>0)push();});
-  }).catch(function(){ghStatus('bad','Нет связи с GitHub. Проверьте интернет.');});
+    if(!meta.permissions||!meta.permissions.push){beStatus('bad','У токена нет права записи (Contents: Read and write).');return;}
+    if(!meta.private)beStatus('ok','Подключено. Внимание: репозиторий ПУБЛИЧНЫЙ — данные видны всем. Лучше сделать его приватным.');
+    else beStatus('ok','Подключено. Данные будут синхронизироваться.');
+    lsSet(GHKEY,{owner:owner,repo:repo,token:token});
+    lsSet(BACKKEY,'github');
+    pull().then(function(){if(provider())push();});
+  }).catch(function(){beStatus('bad','Нет связи с GitHub. Проверьте интернет.');});
 }
 
-/* ══ экспорт / импорт ══ */
+/* ══════════ экспорт / импорт ══════════ */
 function doExport(){
   var blob=new Blob([JSON.stringify(state,null,1)],{type:'application/json'});
   var a=document.createElement('a');
@@ -709,7 +863,7 @@ function doImport(file){
   fr.readAsText(file);
 }
 
-/* ══ уведомления ══ */
+/* ══════════ уведомления ══════════ */
 var toastTimer=null;
 function toast(msg){
   var t=document.getElementById('toast');
@@ -718,7 +872,7 @@ function toast(msg){
   toastTimer=setTimeout(function(){t.hidden=true;},3500);
 }
 
-/* ══ события ══ */
+/* ══════════ события ══════════ */
 function onClick(e){
   var b=e.target.closest('[data-a]');
   if(!b)return;
@@ -730,8 +884,11 @@ function onClick(e){
   else if(a==='modal-close'){closeModal();}
   else if(a==='settings'){openSettings();}
   else if(a==='settings-close'){closeSettings();}
+  else if(a==='pick-backend'){settingsBackend=b.dataset.v;openSettings();}
   else if(a==='gh-save'){verifyAndSaveGh();}
-  else if(a==='gh-off'){ghStore(null);closeSettings();setChip('local');toast('Синхронизация отключена, данные остались на устройстве');}
+  else if(a==='gh-off'){lsSet(GHKEY,null);if(backendName()==='github')lsSet(BACKKEY,null);closeSettings();setChip(provider()?'saved':'local');toast('GitHub отключён, данные остались на устройстве');}
+  else if(a==='yd-login'){ydLogin();}
+  else if(a==='yd-off'){lsSet(YDKEY,null);if(backendName()==='yandex')lsSet(BACKKEY,null);closeSettings();setChip(provider()?'saved':'local');toast('Яндекс Диск отключён, данные остались на устройстве');}
   else if(a==='export'){doExport();}
   else if(a==='import'){document.getElementById('import-input').click();}
   else if(a==='create'){
@@ -821,8 +978,9 @@ function onChange(e){
 
 function renderAll(){renderNav();renderMain();renderDetail();}
 
-/* ══ старт ══ */
+/* ══════════ старт ══════════ */
 function init(){
+  var justLoggedIn=ydCaptureToken();
   state=readLocal()||SEED;
   if(!state.items)state.items=[];
   document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
@@ -836,11 +994,16 @@ function init(){
     }
   });
   document.addEventListener('visibilitychange',function(){
-    if(!document.hidden&&ghCfg()&&Date.now()-lastPull>30000)pull(true);
+    if(!document.hidden&&provider()&&Date.now()-lastPull>30000)pull(true);
   });
   renderAll();
-  if(ghCfg()){setChip('pending');pull(true);}
-  else setChip('local');
+  if(justLoggedIn){
+    toast('Яндекс Диск подключён');
+    setChip('pending');
+    pull(true).then(function(){if(provider())push();});
+  }else if(provider()){
+    setChip('pending');pull(true);
+  }else setChip('local');
 }
 init();
 })();
