@@ -816,16 +816,16 @@ function ydConnect(){
   var token=parseYdToken(document.getElementById('yd-token').value);
   if(!token){beStatus('bad','Не похоже на токен. Вставьте токен со страницы Яндекса или весь её адрес.');return;}
   beStatus('','Проверяю…');
-  fetch(YD_API,{headers:{'Authorization':'OAuth '+token},cache:'no-store'}).then(function(r){
-    if(r.status===401){beStatus('bad','Яндекс не принял токен — получите его заново (Шаг 1).');return null;}
-    if(!r.ok){beStatus('bad','Яндекс ответил ошибкой '+r.status);return null;}
-    return r.json();
-  }).then(function(info){
-    if(!info)return;
+  fetch(YD_API+'/resources?path='+encodeURIComponent('app:/')+'&fields=name',{headers:{'Authorization':'OAuth '+token},cache:'no-store'}).then(function(r){
+    if(r.status===401){beStatus('bad','Яндекс не принял токен — получите его заново (Шаг 1).');return false;}
+    if(r.status===403){beStatus('bad','У токена нет доступа к папке приложения. Проверьте, что в приложении на oauth.yandex.ru добавлен доступ «К папке приложения на Диске», и получите токен заново.');return false;}
+    if(!r.ok&&r.status!==404){beStatus('bad','Яндекс ответил ошибкой '+r.status);return false;}
+    return true; /* 404 — папка ещё не создана, появится при первом сохранении */
+  }).then(function(ok){
+    if(!ok)return;
     lsSet(YDKEY,{clientId:cid,token:token,exp:0});
     lsSet(BACKKEY,'yandex');
-    var who=info.user&&info.user.display_name?' как '+info.user.display_name:'';
-    beStatus('ok','Подключено'+who+'. Данные будут синхронизироваться.');
+    beStatus('ok','Подключено. Данные будут синхронизироваться.');
     pull().then(function(){if(provider())push();});
   }).catch(function(){beStatus('bad','Нет связи с Яндексом. Проверьте интернет.');});
 }
