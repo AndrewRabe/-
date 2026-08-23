@@ -756,16 +756,19 @@ function openSettings(){
     h+='<p class="hint">Данные и фото лягут в папку «Приложения» на вашем Диске. Приложение видит только её.</p>'
       +'<label for="yd-client">ID приложения (ClientID)</label>'
       +'<input id="yd-client" type="text" autocapitalize="off" autocomplete="off" value="'+esc(yd.clientId||'')+'" placeholder="из oauth.yandex.ru">'
-      +'<div class="btnrow"><button class="btn" data-a="yd-login">Войти через Яндекс</button>'
+      +'<div class="btnrow"><button class="btn ghost" data-a="yd-token-page">Шаг 1: получить токен ↗</button></div>'
+      +'<label for="yd-token">Токен со страницы Яндекса</label>'
+      +'<input id="yd-token" type="password" autocomplete="off" placeholder="y0_… (можно вставить весь адрес страницы)">'
+      +'<div class="btnrow"><button class="btn" data-a="yd-connect">Шаг 2: подключить</button>'
       +(YD.ready()?'<button class="btn ghost" data-a="yd-off">Выйти</button>':'')
       +'</div><div id="be-status" class="status-line">'
-      +(YD.ready()?'Вход выполнен.':(ydCfg()&&ydCfg().token?'Вход истёк — войдите заново.':''))+'</div>'
-      +'<details class="help"><summary>Как получить ClientID (один раз, ~5 минут)</summary><ol>'
-      +'<li>Откройте <b>oauth.yandex.ru</b> → «Создать приложение».</li>'
-      +'<li>Название — любое, например «Домашний реестр».</li>'
-      +'<li>Платформа: <b>Веб-сервисы</b>. Redirect URI: точный адрес этой страницы (скопируйте из адресной строки).</li>'
-      +'<li>Доступы: Яндекс.Диск REST API → <b>Доступ к папке приложения на Диске</b>.</li>'
-      +'<li>Создайте и скопируйте <b>ClientID</b> в поле выше.</li>'
+      +(YD.ready()?'Вход выполнен.':(ydCfg()&&ydCfg().token?'Вход истёк — получите токен заново.':''))+'</div>'
+      +'<details class="help"><summary>Как это настроить (один раз, ~5 минут)</summary><ol>'
+      +'<li>Откройте <b>oauth.yandex.ru</b> → «Создать приложение». Название — любое, например «Домашний реестр».</li>'
+      +'<li>Доступ к данным: <b>Доступ к папке приложения на Диске</b> (cloud_api:disk.app_folder).</li>'
+      +'<li>Redirect URI менять не нужно — оставьте как предлагает Яндекс.</li>'
+      +'<li>Скопируйте <b>ClientID</b> созданного приложения в поле выше и нажмите «Шаг 1».</li>'
+      +'<li>Подтвердите доступ — Яндекс покажет страницу с токеном. Скопируйте токен (или весь адрес страницы) и вставьте в поле «Шаг 2».</li>'
       +'</ol></details>';
   }else{
     h+='<p class="hint">Данные хранятся в вашем приватном репозитории GitHub.</p>'
@@ -794,13 +797,37 @@ function openSettings(){
 function closeSettings(){var s=document.getElementById('settings');s.hidden=true;s.innerHTML='';settingsBackend=null;}
 function beStatus(cls,msg){var el=document.getElementById('be-status');if(el){el.className='status-line '+cls;el.textContent=msg;}}
 
-function ydLogin(){
+function ydOpenTokenPage(){
   var cid=document.getElementById('yd-client').value.trim();
   if(!cid){beStatus('bad','Сначала вставьте ClientID (инструкция ниже)');return;}
   var cfg=ydCfg()||{};cfg.clientId=cid;lsSet(YDKEY,cfg);
-  var redirect=location.origin+location.pathname;
-  location.href='https://oauth.yandex.ru/authorize?response_type=token&client_id='+encodeURIComponent(cid)
-    +'&redirect_uri='+encodeURIComponent(redirect)+'&state=ydauth';
+  window.open('https://oauth.yandex.ru/authorize?response_type=token&client_id='+encodeURIComponent(cid),'_blank');
+  beStatus('','Подтвердите доступ на открывшейся странице, затем вставьте токен в поле ниже.');
+}
+function parseYdToken(s){
+  s=String(s||'').trim();
+  var m=s.match(/access_token=([^&\s#?]+)/);
+  if(m)return m[1];
+  if(/^[A-Za-z0-9._-]{20,}$/.test(s))return s;
+  return null;
+}
+function ydConnect(){
+  var cid=document.getElementById('yd-client').value.trim();
+  var token=parseYdToken(document.getElementById('yd-token').value);
+  if(!token){beStatus('bad','Не похоже на токен. Вставьте токен со страницы Яндекса или весь её адрес.');return;}
+  beStatus('','Проверяю…');
+  fetch(YD_API,{headers:{'Authorization':'OAuth '+token},cache:'no-store'}).then(function(r){
+    if(r.status===401){beStatus('bad','Яндекс не принял токен — получите его заново (Шаг 1).');return null;}
+    if(!r.ok){beStatus('bad','Яндекс ответил ошибкой '+r.status);return null;}
+    return r.json();
+  }).then(function(info){
+    if(!info)return;
+    lsSet(YDKEY,{clientId:cid,token:token,exp:0});
+    lsSet(BACKKEY,'yandex');
+    var who=info.user&&info.user.display_name?' как '+info.user.display_name:'';
+    beStatus('ok','Подключено'+who+'. Данные будут синхронизироваться.');
+    pull().then(function(){if(provider())push();});
+  }).catch(function(){beStatus('bad','Нет связи с Яндексом. Проверьте интернет.');});
 }
 function ydCaptureToken(){
   if(location.hash.indexOf('access_token=')<0)return false;
@@ -887,7 +914,8 @@ function onClick(e){
   else if(a==='pick-backend'){settingsBackend=b.dataset.v;openSettings();}
   else if(a==='gh-save'){verifyAndSaveGh();}
   else if(a==='gh-off'){lsSet(GHKEY,null);if(backendName()==='github')lsSet(BACKKEY,null);closeSettings();setChip(provider()?'saved':'local');toast('GitHub отключён, данные остались на устройстве');}
-  else if(a==='yd-login'){ydLogin();}
+  else if(a==='yd-token-page'){ydOpenTokenPage();}
+  else if(a==='yd-connect'){ydConnect();}
   else if(a==='yd-off'){lsSet(YDKEY,null);if(backendName()==='yandex')lsSet(BACKKEY,null);closeSettings();setChip(provider()?'saved':'local');toast('Яндекс Диск отключён, данные остались на устройстве');}
   else if(a==='export'){doExport();}
   else if(a==='import'){document.getElementById('import-input').click();}
