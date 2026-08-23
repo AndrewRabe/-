@@ -213,8 +213,29 @@ var YD_STATE='app:/state.json';
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function plural(n,f){var m10=n%10,m100=n%100;var i=(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<12||m100>14))?1:2;return n+' '+f[i];}
-function b64e(str){var u=new TextEncoder().encode(str),s='';for(var i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);}
-function b64d(b){b=String(b).replace(/\s/g,'');var bin=atob(b),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new TextDecoder().decode(u);}
+function b64eb(u){var s='';for(var i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);}
+function b64db(b){b=String(b).replace(/\s/g,'');var bin=atob(b),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u;}
+function b64e(str){return b64eb(new TextEncoder().encode(str));}
+function b64d(b){return new TextDecoder().decode(b64db(b));}
+function gzEncode(text){
+  try{
+    if(window.CompressionStream){
+      var stream=new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+      return new Response(stream).arrayBuffer().then(function(buf){return {b64:b64eb(new Uint8Array(buf)),e:'gz'};});
+    }
+  }catch(err){}
+  return Promise.resolve({b64:b64e(text),e:'raw'});
+}
+function gzDecode(b64,e){
+  var u=b64db(b64);
+  if(e==='gz'){
+    if(!window.DecompressionStream)return Promise.reject(new Error('gzip'));
+    var stream=new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).text();
+  }
+  return Promise.resolve(new TextDecoder().decode(u));
+}
+function pad3(i){i=String(i);while(i.length<3)i='0'+i;return i;}
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}
 function lsSet(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
@@ -280,11 +301,11 @@ var GH={
       return path;
     });
   },
-  photoBlob:function(path){
+  photoSrc:function(path){
     return fetch(ghUrl(path),{headers:ghHeaders('application/vnd.github.raw+json')}).then(function(r){
       if(!r.ok)throw {status:r.status,backend:'gh'};
       return r.blob();
-    });
+    }).then(function(b){return URL.createObjectURL(b);});
   },
   deletePhoto:function(path){
     var dir=path.slice(0,path.lastIndexOf('/'));
@@ -315,23 +336,57 @@ function ydFetch(url,opts){
     return r.status===204||r.status===202?{}:r.json();
   });
 }
-var ydPhotosDirOk=false;
-function ydEnsurePhotosDir(){
-  if(ydPhotosDirOk)return Promise.resolve();
-  return fetch(YD_API+'/resources?path='+encodeURIComponent('app:/photos'),{method:'PUT',headers:ydHeaders()})
+var ydDirs={};
+function ydEnsureDir(path){
+  if(ydDirs[path])return Promise.resolve();
+  return fetch(YD_API+'/resources?path='+encodeURIComponent(path),{method:'PUT',headers:ydHeaders()})
     .then(function(r){
-      if(r.ok||r.status===409){ydPhotosDirOk=true;return;}
+      if(r.ok||r.status===409){ydDirs[path]=true;return;}
       throw {status:r.status,backend:'yd'};
     });
 }
-function ydDownload(path){
-  return ydFetch(YD_API+'/resources/download?path='+encodeURIComponent(path)).then(function(j){
-    if(!j)return null;
-    return fetch(j.href,{cache:'no-store'}).then(function(r){
-      if(!r.ok)throw {status:r.status,backend:'yd'};
-      return r;
-    });
+function ydPatch(path,props){
+  return fetch(YD_API+'/resources?path='+encodeURIComponent(path),{
+    method:'PATCH',
+    headers:Object.assign({},ydHeaders(),{'Content-Type':'application/json'}),
+    body:JSON.stringify({custom_properties:props})
+  }).then(function(r){
+    if(r.status===404)throw {status:404,backend:'yd'};
+    if(!r.ok)throw {status:r.status,backend:'yd'};
   });
+}
+/* кусочек данных живёт в custom_properties пустого файла: {v,i,n,e,d} */
+function ydChunkWrite(path,props){
+  return ydPatch(path,props).catch(function(e){
+    if(e&&e.status===404)return ydUpload(path,new Blob([' '])).then(function(){return ydPatch(path,props);});
+    throw e;
+  });
+}
+function ydListSync(){
+  return ydFetch(YD_API+'/resources?path='+encodeURIComponent('app:/sync')+'&limit=500&fields=_embedded.items.name,_embedded.items.path,_embedded.items.custom_properties')
+    .then(function(j){
+      if(!j)return null;
+      var items=(j._embedded&&j._embedded.items)||[];
+      var missing=items.filter(function(f){return !f.custom_properties;});
+      if(items.length&&missing.length===items.length){
+        /* сервер не вернул свойства в листинге — дочитываем по одному */
+        return Promise.all(items.map(function(f){
+          return ydFetch(YD_API+'/resources?path='+encodeURIComponent(f.path||('app:/sync/'+f.name))+'&fields=name,custom_properties');
+        })).then(function(full){return full.filter(Boolean);});
+      }
+      return items;
+    });
+}
+function ydCleanupChunks(n){
+  return ydListSync().then(function(items){
+    var extra=(items||[]).filter(function(f){
+      var m=/^c(\d+)$/.exec(f.name||'');
+      return m&&parseInt(m[1],10)>=n;
+    });
+    return Promise.all(extra.map(function(f){
+      return fetch(YD_API+'/resources?path='+encodeURIComponent('app:/sync/'+f.name)+'&permanently=true',{method:'DELETE',headers:ydHeaders()}).catch(function(){});
+    }));
+  }).catch(function(){});
 }
 function ydUpload(path,body){
   return ydFetch(YD_API+'/resources/upload?path='+encodeURIComponent(path)+'&overwrite=true').then(function(j){
@@ -344,23 +399,52 @@ function ydUpload(path,body){
 var YD={
   name:'yandex',
   ready:ydReady,
+  /* Сервер отдачи файлов Диска не разрешает читать содержимое скриптом (CORS),
+     поэтому состояние читается из custom_properties файлов-кусочков в app:/sync,
+     а state.json на Диске — человекочитаемая копия, только на запись. */
   getState:function(){
-    return ydDownload(YD_STATE).then(function(r){
-      if(!r)return null;
-      return r.json().then(function(data){return {data:data,tag:null};});
+    return ydListSync().then(function(items){
+      if(!items||!items.length)return null;
+      var chunks={},v=null,n=0,e='raw',torn=false;
+      items.forEach(function(f){
+        var p=f.custom_properties;
+        if(!p||p.d==null||p.i==null)return;
+        if(v===null){v=String(p.v);n=parseInt(p.n,10)||0;e=p.e||'raw';}
+        else if(String(p.v)!==v){torn=true;}
+        chunks[parseInt(p.i,10)]=p.d;
+      });
+      if(torn||v===null||!n)return null; /* запись с другого устройства в процессе — прочитаем в следующий раз */
+      var b64='';
+      for(var i=0;i<n;i++){if(chunks[i]==null)return null;b64+=chunks[i];}
+      return gzDecode(b64,e).then(function(text){return {data:JSON.parse(text),tag:null};})
+        .catch(function(){return null;});
     });
   },
   putState:function(json){
-    return ydUpload(YD_STATE,new Blob([json],{type:'application/json'}));
+    return gzEncode(json).then(function(res){
+      var CH=880,parts=[];
+      for(var i=0;i<res.b64.length;i+=CH)parts.push(res.b64.slice(i,i+CH));
+      if(!parts.length)parts=[''];
+      var rev=String((JSON.parse(json).rev)||0);
+      return ydEnsureDir('app:/sync').then(function(){
+        var p=Promise.resolve();
+        parts.forEach(function(d,i){
+          p=p.then(function(){return ydChunkWrite('app:/sync/c'+pad3(i),{v:rev,i:String(i),n:String(parts.length),e:res.e,d:d});});
+        });
+        return p.then(function(){return ydCleanupChunks(parts.length);})
+          .then(function(){return ydUpload(YD_STATE,new Blob([json],{type:'application/json'})).catch(function(){});});
+      });
+    });
   },
   uploadPhoto:function(it,blob){
     var path='app:/photos/'+it.id+'-'+uid()+'.jpg';
-    return ydEnsurePhotosDir().then(function(){return ydUpload(path,blob);}).then(function(){return path;});
+    return ydEnsureDir('app:/photos').then(function(){return ydUpload(path,blob);}).then(function(){return path;});
   },
-  photoBlob:function(path){
-    return ydDownload(path).then(function(r){
-      if(!r)throw {status:404,backend:'yd'};
-      return r.blob();
+  photoSrc:function(path){
+    /* картинке CORS не нужен — отдаём подписанную ссылку прямо в <img> */
+    return ydFetch(YD_API+'/resources/download?path='+encodeURIComponent(path)).then(function(j){
+      if(!j)throw {status:404,backend:'yd'};
+      return j.href;
     });
   },
   deletePhoto:function(path){
@@ -492,9 +576,7 @@ function photoUrl(path){
   if(photoCache[path])return Promise.resolve(photoCache[path]);
   var p=photoProvider(path);
   if(!p)return Promise.reject(new Error('backend'));
-  return p.photoBlob(path).then(function(b){
-    var u=URL.createObjectURL(b);photoCache[path]=u;return u;
-  });
+  return p.photoSrc(path).then(function(u){photoCache[path]=u;return u;});
 }
 function hydratePhotos(root){
   (root||document).querySelectorAll('img[data-photo]').forEach(function(img){
