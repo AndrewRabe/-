@@ -443,6 +443,23 @@ function ydThumbWrite(id,b64){
     ydThumbMem[id]='data:image/jpeg;base64,'+b64;thLsSet(id,b64);
   });
 }
+function ydOpenInDisk(path){
+  /* окно открываем синхронно (иначе блокировщик всплывающих окон), адрес ставим после ответа API */
+  var w=window.open('about:blank','_blank');
+  ydFetch(YD_API+'/resources?path='+encodeURIComponent(path)+'&fields=path').then(function(j){
+    var real=j&&j.path?String(j.path):'';
+    var url=YD_DISK_WEB;
+    if(real.indexOf('disk:/')===0){
+      var p=real.slice(6);
+      var folder=p.slice(0,p.lastIndexOf('/'));
+      url='https://disk.yandex.ru/client/disk/'+folder.split('/').map(encodeURIComponent).join('/')
+        +'?dialog=slider&idDialog='+encodeURIComponent('/disk/'+p);
+    }
+    if(w)w.location=url;else window.open(url,'_blank');
+  }).catch(function(){
+    if(w)w.location=YD_DISK_WEB;else window.open(YD_DISK_WEB,'_blank');
+  });
+}
 function ydThumbDelete(id){
   ydThumbMem[id]=null;thLsDel(id);
   return ydThumbList().then(function(items){
@@ -652,11 +669,11 @@ function photoUrl(ph){
   if(photoCache[ph.path])return Promise.resolve(photoCache[ph.path]);
   return GH.photoSrc(ph.path).then(function(u){photoCache[ph.path]=u;return u;});
 }
-function markThumb(img,msg,href){
+function markThumb(img,msg,diskPath){
   var d=document.createElement('span');
   d.className='thumb thumb-err';
   d.textContent='📷 '+msg;
-  if(href){d.title='Открыть фото в новой вкладке';d.setAttribute('data-a','photo-ext');d.setAttribute('data-href',href);d.setAttribute('role','button');d.setAttribute('tabindex','0');}
+  if(diskPath){d.title='Открыть фото в Яндекс Диске';d.setAttribute('data-a','photo-disk');d.setAttribute('data-dpath',diskPath);d.setAttribute('role','button');d.setAttribute('tabindex','0');}
   img.replaceWith(d);
 }
 function hydratePhotos(root){
@@ -666,7 +683,7 @@ function hydratePhotos(root){
       img.src=u;img.classList.remove('loading');
     }).catch(function(){
       var yd=String(ph.path).indexOf('app:/')===0;
-      markThumb(img,yd?'фото в Диске — открыть':'не загрузилось',yd?YD_DISK_WEB:null);
+      markThumb(img,yd?'фото в Диске — открыть':'не загрузилось',yd?ph.path:null);
     });
   });
 }
@@ -889,7 +906,7 @@ function openViewer(itemId,photoId){
   var yd=String(ph.path).indexOf('app:/')===0;
   v.innerHTML='<img alt="фото" data-photo="'+esc(ph.path)+'" data-pid="'+ph.id+'">'
     +'<div class="tools">'
-    +(yd?'<button data-a="photo-ext" data-href="'+YD_DISK_WEB+'">Открыть в Диске</button>':'')
+    +(yd?'<button data-a="photo-disk" data-dpath="'+esc(ph.path)+'">Открыть в Диске</button>':'')
     +'<button data-a="del-photo" data-id="'+itemId+'" data-sub="'+photoId+'">Удалить</button>'
     +'<button data-a="close-viewer">Закрыть</button></div>';
   hydratePhotos(v);
@@ -1141,7 +1158,7 @@ function onClick(e){
     pi.dataset.item=it.id;pi.value='';pi.click();
   }
   else if(a==='view-photo'){e.stopPropagation();openViewer(id,b.dataset.sub);}
-  else if(a==='photo-ext'){if(b.dataset.href)window.open(b.dataset.href,'_blank');}
+  else if(a==='photo-disk'){if(b.dataset.dpath)ydOpenInDisk(b.dataset.dpath);}
   else if(a==='del-photo'&&it){delPhoto(it,b.dataset.sub);}
   else if(a==='close-viewer'){closeViewer();}
   else if(a==='del-ask'){confirmDel=true;renderDetail();}
