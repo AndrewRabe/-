@@ -294,8 +294,8 @@ var GH={
       if(!r.ok)throw {status:r.status,backend:'gh'};
     });
   },
-  uploadPhoto:function(it,blob){
-    var path='photos/'+it.id+'/'+uid()+'.jpg';
+  uploadPhoto:function(it,blob,thumbB64,pid){
+    var path='photos/'+it.id+'/'+pid+'.jpg';
     return blobToB64(blob).then(function(b64){
       return fetch(ghUrl(path),{method:'PUT',headers:ghHeaders(),body:JSON.stringify({message:'Фото: '+it.name,content:b64})});
     }).then(function(r){
@@ -379,6 +379,79 @@ function ydListSync(){
       return items;
     });
 }
+/* ── превью фото: тоже через custom_properties (канал отдачи файлов ненадёжен) ── */
+var YD_DISK_WEB='https://disk.yandex.ru/client/disk/%D0%9F%D1%80%D0%B8%D0%BB%D0%BE%D0%B6%D0%B5%D0%BD%D0%B8%D1%8F';
+var ydThumbMem={}, ydThumbIndexP=null;
+function thLsGet(id){try{return localStorage.getItem('hr-th-'+id);}catch(e){return null;}}
+function thLsSet(id,v){try{localStorage.setItem('hr-th-'+id,v);}catch(e){}}
+function thLsDel(id){try{localStorage.removeItem('hr-th-'+id);}catch(e){}}
+function ydThumbList(){
+  return ydFetch(YD_API+'/resources?path='+encodeURIComponent('app:/thumbs')+'&limit=1000&fields=_embedded.items.name,_embedded.items.path,_embedded.items.custom_properties')
+    .then(function(j){
+      if(!j)return [];
+      var items=(j._embedded&&j._embedded.items)||[];
+      var missing=items.filter(function(f){return !f.custom_properties;});
+      if(items.length&&missing.length===items.length){
+        return Promise.all(items.map(function(f){
+          return ydFetch(YD_API+'/resources?path='+encodeURIComponent(f.path||('app:/thumbs/'+f.name))+'&fields=name,custom_properties');
+        })).then(function(full){return full.filter(Boolean);});
+      }
+      return items;
+    });
+}
+function ydThumbIndex(){
+  if(!ydThumbIndexP)ydThumbIndexP=ydThumbList().then(function(items){
+    var by={};
+    items.forEach(function(f){
+      var m=/^(.+)\.c(\d+)$/.exec(f.name||'');
+      var p=f.custom_properties;
+      if(!m||!p||p.d==null)return;
+      var e=(by[m[1]]=by[m[1]]||{n:parseInt(p.n,10)||0,parts:{}});
+      e.parts[parseInt(m[2],10)]=p.d;
+    });
+    var map={};
+    Object.keys(by).forEach(function(id){
+      var e=by[id],b64='';
+      for(var i=0;i<e.n;i++){if(e.parts[i]==null)return;b64+=e.parts[i];}
+      map[id]=b64;
+    });
+    return map;
+  }).catch(function(e){ydThumbIndexP=null;throw e;});
+  return ydThumbIndexP;
+}
+function ydThumbSrc(id){
+  if(ydThumbMem[id])return Promise.resolve(ydThumbMem[id]);
+  var ls=thLsGet(id);
+  if(ls){ydThumbMem[id]='data:image/jpeg;base64,'+ls;return Promise.resolve(ydThumbMem[id]);}
+  return ydThumbIndex().then(function(map){
+    if(!map[id])throw {status:404,backend:'yd'};
+    thLsSet(id,map[id]);
+    ydThumbMem[id]='data:image/jpeg;base64,'+map[id];
+    return ydThumbMem[id];
+  });
+}
+function ydThumbWrite(id,b64){
+  var CH=880,parts=[];
+  for(var i=0;i<b64.length;i+=CH)parts.push(b64.slice(i,i+CH));
+  return ydEnsureDir('app:/thumbs').then(function(){
+    var p=Promise.resolve();
+    parts.forEach(function(d,i){
+      p=p.then(function(){return ydChunkWrite('app:/thumbs/'+id+'.c'+pad3(i),{i:String(i),n:String(parts.length),d:d});});
+    });
+    return p;
+  }).then(function(){
+    ydThumbMem[id]='data:image/jpeg;base64,'+b64;thLsSet(id,b64);
+  });
+}
+function ydThumbDelete(id){
+  ydThumbMem[id]=null;thLsDel(id);
+  return ydThumbList().then(function(items){
+    var mine=items.filter(function(f){return (f.name||'').indexOf(id+'.c')===0;});
+    return Promise.all(mine.map(function(f){
+      return fetch(YD_API+'/resources?path='+encodeURIComponent('app:/thumbs/'+f.name)+'&permanently=true',{method:'DELETE',headers:ydHeaders()}).catch(function(){});
+    }));
+  }).catch(function(){});
+}
 function ydCleanupChunks(n){
   return ydListSync().then(function(items){
     var extra=(items||[]).filter(function(f){
@@ -438,16 +511,11 @@ var YD={
       });
     });
   },
-  uploadPhoto:function(it,blob){
-    var path='app:/photos/'+it.id+'-'+uid()+'.jpg';
-    return ydEnsureDir('app:/photos').then(function(){return ydUpload(path,blob);}).then(function(){return path;});
-  },
-  photoSrc:function(path){
-    /* картинке CORS не нужен — отдаём подписанную ссылку прямо в <img> */
-    return ydFetch(YD_API+'/resources/download?path='+encodeURIComponent(path)).then(function(j){
-      if(!j)throw {status:404,backend:'yd'};
-      return j.href;
-    });
+  uploadPhoto:function(it,blob,thumbB64,pid){
+    var path='app:/photos/'+it.id+'-'+pid+'.jpg';
+    return ydEnsureDir('app:/photos').then(function(){return ydUpload(path,blob);})
+      .then(function(){return ydThumbWrite(pid,thumbB64);})
+      .then(function(){return path;});
   },
   deletePhoto:function(path){
     return fetch(YD_API+'/resources?path='+encodeURIComponent(path)+'&permanently=true',{method:'DELETE',headers:ydHeaders()});
@@ -468,10 +536,6 @@ function provider(){
   if(b==='github'&&GH.ready())return GH;
   if(b==='yandex'&&YD.ready())return YD;
   return null;
-}
-function photoProvider(path){
-  if(String(path).indexOf('app:/')===0)return YD.ready()?YD:null;
-  return GH.ready()?GH:null;
 }
 
 /* ══════════ локальный кэш и синхронизация ══════════ */
@@ -539,15 +603,16 @@ function push(attempt){
 }
 
 /* ══════════ фото ══════════ */
-function compressImage(file){
+function compressImage(file,maxDim,quality){
+  maxDim=maxDim||1600;quality=quality||0.82;
   return new Promise(function(res,rej){
     var img=new Image(),url=URL.createObjectURL(file);
     img.onload=function(){
-      var w=img.naturalWidth,h=img.naturalHeight,sc=Math.min(1,1600/Math.max(w,h));
+      var w=img.naturalWidth,h=img.naturalHeight,sc=Math.min(1,maxDim/Math.max(w,h));
       var c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*sc));c.height=Math.max(1,Math.round(h*sc));
       c.getContext('2d').drawImage(img,0,0,c.width,c.height);
       URL.revokeObjectURL(url);
-      c.toBlob(function(b){b?res(b):rej(new Error('convert'));},'image/jpeg',0.82);
+      c.toBlob(function(b){b?res(b):rej(new Error('convert'));},'image/jpeg',quality);
     };
     img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'));};
     img.src=url;
@@ -565,20 +630,27 @@ function addPhoto(it,file){
   var p=provider();
   if(!p){toast('Фото хранятся в облаке — сначала настройте синхронизацию (⚙)');return;}
   toast('Загружаю фото…');
-  compressImage(file).then(function(blob){
-    return p.uploadPhoto(it,blob).then(function(path){
+  var pid=uid();
+  Promise.all([
+    compressImage(file,1600,0.82),
+    compressImage(file,144,0.55).then(blobToB64)
+  ]).then(function(rs){
+    return p.uploadPhoto(it,rs[0],rs[1],pid).then(function(path){
       it.photos=it.photos||[];
-      it.photos.push({id:uid(),path:path});
+      it.photos.push({id:pid,path:path});
       touch();renderDetail();
       toast('Фото добавлено');
     });
   }).catch(function(e){toast('Не получилось загрузить фото: '+((e&&e.backend)?(e.backend==='yd'?YD:GH).errText(e):'ошибка обработки файла'));});
 }
-function photoUrl(path){
-  if(photoCache[path])return Promise.resolve(photoCache[path]);
-  var p=photoProvider(path);
-  if(!p)return Promise.reject(new Error('backend'));
-  return p.photoSrc(path).then(function(u){photoCache[path]=u;return u;});
+function photoUrl(ph){
+  if(String(ph.path).indexOf('app:/')===0){
+    if(!YD.ready())return Promise.reject(new Error('backend'));
+    return ydThumbSrc(ph.id);
+  }
+  if(!GH.ready())return Promise.reject(new Error('backend'));
+  if(photoCache[ph.path])return Promise.resolve(photoCache[ph.path]);
+  return GH.photoSrc(ph.path).then(function(u){photoCache[ph.path]=u;return u;});
 }
 function markThumb(img,msg,href){
   var d=document.createElement('span');
@@ -587,29 +659,14 @@ function markThumb(img,msg,href){
   if(href){d.title='Открыть фото в новой вкладке';d.setAttribute('data-a','photo-ext');d.setAttribute('data-href',href);d.setAttribute('role','button');d.setAttribute('tabindex','0');}
   img.replaceWith(d);
 }
-function photoRescue(img,path,href){
-  /* картинка не отрисовалась — пробуем скачать скриптом и показать из блоба */
-  fetch(href,{cache:'no-store'}).then(function(r){
-    if(!r.ok)throw {status:r.status};
-    return r.blob();
-  }).then(function(b){
-    if(!b||!b.size)throw {status:'файл пуст'};
-    var u=URL.createObjectURL(b);
-    photoCache[path]=u;img.src=u;img.classList.remove('loading');
-  }).catch(function(e){
-    markThumb(img,(e&&e.status)?('ошибка: '+e.status):'закрыто для сайтов — открыть',href);
-  });
-}
 function hydratePhotos(root){
   (root||document).querySelectorAll('img[data-photo]').forEach(function(img){
-    var path=img.dataset.photo;
-    photoUrl(path).then(function(u){
-      if(u.indexOf('blob:')===0){img.src=u;img.classList.remove('loading');return;}
-      img.onerror=function(){img.onerror=null;photoRescue(img,path,u);};
-      img.onload=function(){img.classList.remove('loading');};
-      img.src=u;
-    }).catch(function(e){
-      markThumb(img,'нет ссылки'+((e&&e.status)?' ('+e.status+')':''),null);
+    var ph={id:img.dataset.pid,path:img.dataset.photo};
+    photoUrl(ph).then(function(u){
+      img.src=u;img.classList.remove('loading');
+    }).catch(function(){
+      var yd=String(ph.path).indexOf('app:/')===0;
+      markThumb(img,yd?'фото в Диске — открыть':'не загрузилось',yd?YD_DISK_WEB:null);
     });
   });
 }
@@ -617,9 +674,11 @@ function delPhoto(it,photoId){
   var ph=(it.photos||[]).filter(function(p){return p.id===photoId;})[0];
   it.photos=(it.photos||[]).filter(function(p){return p.id!==photoId;});
   touch();renderDetail();closeViewer();
-  if(ph){
-    var p=photoProvider(ph.path);
-    if(p)p.deletePhoto(ph.path).catch(function(){});
+  if(!ph)return;
+  if(String(ph.path).indexOf('app:/')===0){
+    if(YD.ready()){YD.deletePhoto(ph.path).catch(function(){});ydThumbDelete(ph.id);}
+  }else if(GH.ready()){
+    GH.deletePhoto(ph.path).catch(function(){});
   }
 }
 
@@ -753,7 +812,7 @@ function renderDetail(){
 
   h+='<section class="d-sec"><h3>Фото</h3><div class="photos">';
   (it.photos||[]).forEach(function(p){
-    h+='<img class="thumb loading" alt="фото" data-photo="'+esc(p.path)+'" data-a="view-photo" data-id="'+it.id+'" data-sub="'+p.id+'">';
+    h+='<img class="thumb loading" alt="фото" data-photo="'+esc(p.path)+'" data-pid="'+p.id+'" data-a="view-photo" data-id="'+it.id+'" data-sub="'+p.id+'">';
   });
   h+='<button class="addphoto" data-a="add-photo" data-id="'+it.id+'" title="Добавить фото">+</button></div>';
   if(!provider())h+='<p class="hint">Фото сохраняются в облако — настройте синхронизацию через ⚙ вверху.</p>';
@@ -827,8 +886,11 @@ function openViewer(itemId,photoId){
   if(!ph)return;
   var v=document.getElementById('pviewer');
   v.hidden=false;
-  v.innerHTML='<img alt="фото" data-photo="'+esc(ph.path)+'">'
-    +'<div class="tools"><button data-a="del-photo" data-id="'+itemId+'" data-sub="'+photoId+'">Удалить</button>'
+  var yd=String(ph.path).indexOf('app:/')===0;
+  v.innerHTML='<img alt="фото" data-photo="'+esc(ph.path)+'" data-pid="'+ph.id+'">'
+    +'<div class="tools">'
+    +(yd?'<button data-a="photo-ext" data-href="'+YD_DISK_WEB+'">Открыть в Диске</button>':'')
+    +'<button data-a="del-photo" data-id="'+itemId+'" data-sub="'+photoId+'">Удалить</button>'
     +'<button data-a="close-viewer">Закрыть</button></div>';
   hydratePhotos(v);
 }
