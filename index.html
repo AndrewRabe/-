@@ -327,7 +327,7 @@ function adText(it){
   var ad=adOf(it),lines=[];
   lines.push(adTitle(it)+'.');
   if(ad.cond)lines.push('Состояние: '+ad.cond+'.');
-  if(it.price)lines.push('Цена: '+it.price+(ad.bargain?', возможен торг':'')+'.');
+  if(it.price)lines.push('Цена: '+(moneyNum(it.price)?moneyNum(it.price).toLocaleString('ru-RU')+' ₽':it.price)+(ad.bargain?', возможен торг':'')+'.');
   if(adMode==='full'&&(it.specs||[]).length){
     lines.push('','Характеристики:');
     it.specs.forEach(function(s){if(s.k)lines.push('— '+s.k+(s.v?': '+s.v:''));});
@@ -697,6 +697,7 @@ function adoptRemote(remote){
   if(!state.items)state.items=[];
   if(!state.events)state.events=[];
   if(!state.wishes)state.wishes=[];
+  if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   writeLocal();renderAll();
 }
 function pull(quiet){
@@ -897,6 +898,7 @@ function renderMain(){
   }else if(v==='sale'||v==='archive'){
     var list2=state.items.filter(function(i){return i.status===v;}).filter(matches);
     h=title(v==='sale'?'💰 На продажу':'🗄 Архив',list2.length)
+      +(v==='sale'&&list2.length?'<div class="btnrow" style="margin:-4px 0 14px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div>':'')
       +gridHTML(list2,v==='sale'?'Отметьте объект «На продажу» в его карточке — он появится здесь.':'Отправляйте сюда то, чем больше не пользуетесь: продали, выбросили, отдали.');
   }else if(v==='tasks'){
     h=title('☑ Все задачи',null);var any=false;
@@ -1075,6 +1077,16 @@ function renderDetail(){
         ?'<button class="btn ghost" data-a="photo-disk" data-dpath="'+esc(it.photos[0].path)+'">Фото в Диске ↗</button>':'')
       +'</div>'
       +'<p class="hint">Фото в полном размере лежат в папке приложения на Яндекс Диске — прикрепите их к объявлению из приложения Диска или галереи.</p></section>';
+
+    var pl=adPlatforms(it);
+    h+='<section class="d-sec"><h3>Где выложено</h3>';
+    [['avito','Авито'],['youla','Юла']].forEach(function(pr){
+      var k=pr[0],p=pl[k],days=p.posted&&p.date?Math.max(0,Math.floor((Date.now()-new Date(p.date).getTime())/86400000)):null;
+      h+='<div class="row"><input type="checkbox" '+(p.posted?'checked ':'')+'data-f="pl-posted" data-k="'+k+'" data-id="'+it.id+'">'
+        +'<span class="t">'+pr[1]+(p.posted&&days!=null?' <span class="wish-meta">· висит '+plural(days,['день','дня','дней'])+'</span>':'')+'</span></div>'
+        +(p.posted?'<div class="addrow" style="margin-top:4px"><input type="text" value="'+esc(p.url)+'" data-f="pl-url" data-k="'+k+'" data-id="'+it.id+'" placeholder="ссылка на объявление"></div>':'');
+    });
+    h+='<div class="btnrow" style="margin-top:10px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div></section>';
   }
 
   h+='<section class="d-sec"><h3>Фото</h3><div class="photos">';
@@ -1429,6 +1441,317 @@ function toast(msg){
   toastTimer=setTimeout(function(){t.hidden=true;},3500);
 }
 
+/* ══════════ экспорт объявлений: архив, фиды, таблица ══════════ */
+var exportOpts={photos:true,text:true,html:true,csv:true,xml:false,yml:false,scope:'sale'};
+
+function xmlEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function cdata(s){return '<![CDATA['+String(s==null?'':s).replace(/\]\]>/g,']]&gt;')+']]>';}
+function csvCell(s){return '"'+String(s==null?'':s).replace(/"/g,'""')+'"';}
+function crlf(s){return String(s).replace(/\r?\n/g,'\r\n');}
+function utf8(str){return new TextEncoder().encode(str);}
+function safeName(s){return String(s||'').replace(/[\\\/:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60)||'вещь';}
+function itemFolder(it,i){return pad2(i+1)+' '+safeName(it.name);}
+function photoName(i){return pad2(i+1)+'.jpg';}
+function rub(v){var n=moneyNum(v);return n?n.toLocaleString('ru-RU')+' ₽':'';}
+function settings(){return state.settings||(state.settings={phone:'',manager:'',address:'',photoBase:''});}
+function adPlatforms(it){
+  var ad=adOf(it);
+  if(!ad.platforms)ad.platforms={avito:{posted:false,date:'',url:''},youla:{posted:false,date:'',url:''}};
+  if(!ad.platforms.avito)ad.platforms.avito={posted:false,date:'',url:''};
+  if(!ad.platforms.youla)ad.platforms.youla={posted:false,date:'',url:''};
+  return ad.platforms;
+}
+
+var CRC_TABLE=(function(){
+  var t=new Uint32Array(256);
+  for(var i=0;i<256;i++){var c=i;for(var k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}
+  return t;
+})();
+function crc32(buf){var c=0xFFFFFFFF;for(var i=0;i<buf.length;i++)c=CRC_TABLE[(c^buf[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function zipBuild(entries){
+  var parts=[],central=[],offset=0,d=new Date();
+  var dtime=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1))&0xFFFF;
+  var ddate=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;
+  entries.forEach(function(e){
+    var name=utf8(e.name),data=e.data,crc=crc32(data);
+    var lh=new Uint8Array(30+name.length),lv=new DataView(lh.buffer);
+    lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);
+    lv.setUint16(8,0,true);lv.setUint16(10,dtime,true);lv.setUint16(12,ddate,true);
+    lv.setUint32(14,crc,true);lv.setUint32(18,data.length,true);lv.setUint32(22,data.length,true);
+    lv.setUint16(26,name.length,true);lv.setUint16(28,0,true);
+    lh.set(name,30);parts.push(lh,data);
+    var ch=new Uint8Array(46+name.length),cv=new DataView(ch.buffer);
+    cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);
+    cv.setUint16(8,0x0800,true);cv.setUint16(10,0,true);
+    cv.setUint16(12,dtime,true);cv.setUint16(14,ddate,true);
+    cv.setUint32(16,crc,true);cv.setUint32(20,data.length,true);cv.setUint32(24,data.length,true);
+    cv.setUint16(28,name.length,true);cv.setUint16(30,0,true);cv.setUint16(32,0,true);
+    cv.setUint16(34,0,true);cv.setUint16(36,0,true);cv.setUint32(38,0,true);
+    cv.setUint32(42,offset,true);
+    ch.set(name,46);central.push(ch);
+    offset+=lh.length+data.length;
+  });
+  var cdSize=0;central.forEach(function(c){cdSize+=c.length;});
+  var eo=new Uint8Array(22),ev=new DataView(eo.buffer);
+  ev.setUint32(0,0x06054b50,true);ev.setUint16(4,0,true);ev.setUint16(6,0,true);
+  ev.setUint16(8,entries.length,true);ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cdSize,true);ev.setUint32(16,offset,true);ev.setUint16(20,0,true);
+  return new Blob(parts.concat(central,[eo]),{type:'application/zip'});
+}
+function downloadBlob(blob,filename){
+  var url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();
+  setTimeout(function(){a.remove();URL.revokeObjectURL(url);},400);
+}
+
+/* фото для архива: с Диска доступны превью, из GitHub — полный размер */
+function photoBytes(ph){
+  return photoUrl(ph).then(function(u){
+    if(u.indexOf('data:')===0){
+      var b64=u.split(',')[1]||'';
+      var bin=atob(b64),out=new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);
+      return {bytes:out,full:false};
+    }
+    return fetch(u).then(function(r){return r.arrayBuffer();}).then(function(ab){return {bytes:new Uint8Array(ab),full:true};});
+  });
+}
+
+function exportItems(){
+  var list=state.items.filter(function(i){return i.status==='sale';});
+  if(exportOpts.scope==='ready')list=list.filter(function(i){return !adChecks(i).some(function(w){return w.bad;});});
+  return list;
+}
+
+function itemTxt(it,pk){
+  var lim=AD_LIMITS[pk],name=pk==='avito'?'Авито':'Юла';
+  var ttl=adTitle(it),txt=adText(it),warns=adChecks(it),ad=adOf(it);
+  var L=[];
+  L.push('=== '+name+' ===','');
+  L.push('ЗАГОЛОВОК ('+ttl.length+' из '+lim.title+'):',ttl,'');
+  L.push('ЦЕНА: '+(rub(it.price)||'не указана')+(ad.bargain?' (торг уместен)':''));
+  L.push('СОСТОЯНИЕ: '+(ad.cond||'не выбрано'),'');
+  L.push('ОПИСАНИЕ ('+txt.length+' из '+lim.text+'):',txt,'');
+  if(warns.length){L.push('!! ПЕРЕД ВЫКЛАДКОЙ ПОПРАВИТЬ:');warns.forEach(function(w){L.push('   - '+w.msg);});L.push('');}
+  L.push('Фото рядом, по порядку: '+((it.photos||[]).length?it.photos.map(function(_,i){return photoName(i);}).join(', '):'нет'));
+  if(it.notes)L.push('','Заметка для себя: '+it.notes);
+  return crlf(L.join('\n'));
+}
+
+function buildHtmlPage(items){
+  var cards=items.map(function(it,idx){
+    var folder=itemFolder(it,idx);
+    var thumbs=(it.photos||[]).map(function(_,i){
+      var src=encodeURI(folder+'/'+photoName(i));
+      return '<a href="'+src+'" target="_blank"><img src="'+src+'"></a>';
+    }).join('');
+    var blocks=['avito','youla'].map(function(pk){
+      var lim=AD_LIMITS[pk],nm=pk==='avito'?'Авито':'Юла',ttl=adTitle(it),txt=adText(it);
+      return '<div class="pf"><h4>'+nm+'</h4>'
+        +'<div class="lbl">Заголовок <span>'+ttl.length+'/'+lim.title+'</span>'
+        +'<button onclick="cp(this,\'t'+idx+pk+'\')">копировать</button></div>'
+        +'<pre id="t'+idx+pk+'">'+esc(ttl)+'</pre>'
+        +'<div class="lbl">Описание <span>'+txt.length+'/'+lim.text+'</span>'
+        +'<button onclick="cp(this,\'d'+idx+pk+'\')">копировать</button></div>'
+        +'<pre id="d'+idx+pk+'">'+esc(txt)+'</pre></div>';
+    }).join('');
+    return '<section class="card"><h2>'+pad2(idx+1)+'. '+esc(it.name)+'</h2>'
+      +'<div class="meta">'+esc(CATS[it.cat].label)+' · '+esc(adOf(it).cond||'')+' · <b>'+(rub(it.price)||'цена не указана')+'</b></div>'
+      +'<div class="thumbs">'+(thumbs||'<span class="none">фото нет</span>')+'</div>'
+      +'<div class="pfs">'+blocks+'</div></section>';
+  }).join('');
+  return '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1"><title>Объявления к выкладке</title><style>'
+    +'body{font:15px/1.55 -apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f4f5f7;color:#12161c;margin:0;padding:20px}'
+    +'.wrap{max-width:980px;margin:0 auto}h1{font-size:22px;margin:0 0 6px}.sub{color:#6b7480;margin-bottom:20px;font-size:14px}'
+    +'.card{background:#fff;border:1px solid #e3e6ea;border-radius:12px;padding:16px;margin-bottom:16px}'
+    +'h2{font-size:17px;margin:0 0 6px}.meta{color:#6b7480;font-size:13.5px;margin-bottom:12px}'
+    +'.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.thumbs img{width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid #e3e6ea}'
+    +'.none{color:#98a1ab;font-size:13px}.pfs{display:grid;gap:14px;grid-template-columns:1fr}'
+    +'@media(min-width:760px){.pfs{grid-template-columns:1fr 1fr}}'
+    +'.pf{background:#fafbfc;border:1px solid #e3e6ea;border-radius:10px;padding:12px}h4{margin:0 0 8px;font-size:14px}'
+    +'.lbl{display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7480;margin:10px 0 4px}'
+    +'.lbl button{margin-left:auto;border:1px solid #e3e6ea;background:#fff;border-radius:7px;padding:3px 9px;font-size:12px;cursor:pointer}'
+    +'pre{white-space:pre-wrap;word-break:break-word;font:inherit;background:#fff;border:1px solid #e3e6ea;border-radius:8px;padding:10px;margin:0}'
+    +'</style></head><body><div class="wrap"><h1>Объявления к выкладке</h1>'
+    +'<div class="sub">Открывайте площадку, копируйте заголовок и описание, фото берите из папки рядом с этим файлом.</div>'
+    +cards+'</div><script>function cp(btn,id){var el=document.getElementById(id);var ta=document.createElement("textarea");'
+    +'ta.value=el.textContent;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");btn.textContent="скопировано";'
+    +'setTimeout(function(){btn.textContent="копировать"},1200)}catch(e){}ta.remove();}<\/script></body></html>';
+}
+
+function buildCsv(items){
+  var head=['№','Название','Раздел','Состояние','Цена','Торг','Фото','Авито','Дата Авито','Ссылка Авито','Юла','Дата Юлы','Ссылка Юлы','Заметки'];
+  var rows=[head.map(csvCell).join(';')];
+  items.forEach(function(it,i){
+    var pl=adPlatforms(it),ad=adOf(it);
+    rows.push([i+1,it.name,CATS[it.cat].label,ad.cond||'',moneyNum(it.price)||'',ad.bargain?'да':'',
+      (it.photos||[]).length,
+      pl.avito.posted?'выложено':'',pl.avito.date||'',pl.avito.url||'',
+      pl.youla.posted?'выложено':'',pl.youla.date||'',pl.youla.url||'',
+      it.notes||''].map(csvCell).join(';'));
+  });
+  return '﻿'+crlf(rows.join('\n'));
+}
+
+function photoUrlsFor(it,folder){
+  var base=String(settings().photoBase||'').trim();
+  if(base&&base.slice(-1)!=='/')base+='/';
+  return (it.photos||[]).map(function(_,i){
+    var rel=folder+'/'+photoName(i);
+    return base?base+encodeURI(rel):encodeURI(rel);
+  });
+}
+
+function buildAvitoXml(items){
+  var st=settings();
+  var s='<?xml version="1.0" encoding="UTF-8"?>\n<Ads formatVersion="3" target="Avito.ru">\n';
+  items.forEach(function(it,idx){
+    var ad=adOf(it),cond=/^нов/i.test(ad.cond||'')?'Новое':'Б/у';
+    s+='  <Ad>\n    <Id>'+xmlEsc(it.id)+'</Id>\n    <AdStatus>Free</AdStatus>\n';
+    s+='    <Category>'+xmlEsc(CATS[it.cat].label)+'</Category>\n';
+    s+='    <Title>'+xmlEsc(adTitle(it))+'</Title>\n';
+    s+='    <Description>'+cdata(adText(it).replace(/\n/g,'<br/>'))+'</Description>\n';
+    s+='    <Price>'+(moneyNum(it.price)||0)+'</Price>\n';
+    s+='    <Condition>'+cond+'</Condition>\n';
+    s+='    <Address>'+xmlEsc(st.address||'')+'</Address>\n';
+    if(st.phone)s+='    <ContactPhone>'+xmlEsc(st.phone)+'</ContactPhone>\n';
+    if(st.manager)s+='    <ManagerName>'+xmlEsc(st.manager)+'</ManagerName>\n';
+    var urls=photoUrlsFor(it,itemFolder(it,idx));
+    if(urls.length){
+      s+='    <Images>\n';
+      urls.forEach(function(u){s+='      <Image url="'+xmlEsc(u)+'"/>\n';});
+      s+='    </Images>\n';
+    }
+    s+='  </Ad>\n';
+  });
+  return s+'</Ads>\n';
+}
+
+function buildYoulaYml(items){
+  var st=settings(),d=new Date();
+  var stamp=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
+  var cats=[];
+  items.forEach(function(it){var c=CATS[it.cat].label;if(cats.indexOf(c)===-1)cats.push(c);});
+  var s='<?xml version="1.0" encoding="UTF-8"?>\n<yml_catalog date="'+stamp+'">\n  <shop>\n';
+  s+='    <name>'+xmlEsc(st.manager||'Личные вещи')+'</name>\n';
+  s+='    <company>'+xmlEsc(st.manager||'Частное лицо')+'</company>\n';
+  s+='    <url>https://example.com</url>\n';
+  s+='    <currencies><currency id="RUR" rate="1"/></currencies>\n    <categories>\n';
+  cats.forEach(function(c,i){s+='      <category id="'+(i+1)+'">'+xmlEsc(c)+'</category>\n';});
+  s+='    </categories>\n    <offers>\n';
+  items.forEach(function(it,idx){
+    var ad=adOf(it);
+    s+='      <offer id="'+xmlEsc(it.id)+'" available="true">\n';
+    s+='        <name>'+xmlEsc(adTitle(it))+'</name>\n';
+    s+='        <price>'+(moneyNum(it.price)||0)+'</price>\n';
+    s+='        <currencyId>RUR</currencyId>\n';
+    s+='        <categoryId>'+(cats.indexOf(CATS[it.cat].label)+1)+'</categoryId>\n';
+    photoUrlsFor(it,itemFolder(it,idx)).forEach(function(u){s+='        <picture>'+xmlEsc(u)+'</picture>\n';});
+    s+='        <description>'+cdata(adText(it))+'</description>\n';
+    if(st.address)s+='        <param name="Адрес">'+xmlEsc(st.address)+'</param>\n';
+    if(ad.cond)s+='        <param name="Состояние">'+xmlEsc(ad.cond)+'</param>\n';
+    s+='      </offer>\n';
+  });
+  return s+'    </offers>\n  </shop>\n</yml_catalog>\n';
+}
+
+function buildReadme(items,fullPhotos){
+  var L=[];
+  L.push('КАК ПОЛЬЗОВАТЬСЯ ЭТИМ АРХИВОМ','');
+  L.push('Вещей в архиве: '+items.length+'. Собрано: '+new Date().toLocaleString('ru-RU'),'');
+  L.push('1. На каждую вещь — своя папка: фото по порядку (01.jpg — главное)');
+  L.push('   и файлы avito.txt и youla.txt с заголовком, ценой и описанием.');
+  L.push('2. Файл «Объявления.html» открывается в браузере: все вещи сразу,');
+  L.push('   с кнопками «копировать» у каждого заголовка и описания.');
+  L.push('3. Создаёте объявление на площадке, вставляете текст, прикладываете фото.');
+  L.push('4. Вернитесь в «Домашний реестр» и отметьте, что вещь выложена.','');
+  if(!fullPhotos){
+    L.push('ВНИМАНИЕ ПРО ФОТО');
+    L.push('В архив попали уменьшенные копии (превью) — полноразмерные снимки');
+    L.push('хранятся на вашем Яндекс Диске: папка «Приложения» → «Домашний реестр» → photos.');
+    L.push('Для объявления берите оригиналы оттуда: превью годятся только для ориентира.','');
+  }
+  L.push('ПРО ФАЙЛЫ-ФИДЫ (avito-feed.xml, youla-feed.yml)');
+  L.push('Это машинная выгрузка объявлений. Авито принимает такой файл только на платных');
+  L.push('тарифах для профессиональных продавцов, у Юлы массовая загрузка — отдельная услуга.');
+  L.push('Площадки читают фото ТОЛЬКО по ссылкам из интернета: выложите папки с фото');
+  L.push('на любой хостинг и укажите адрес в поле «Адрес папки с фото» перед экспортом.');
+  L.push('Если просто распродаёте свои вещи — фиды не нужны, выкладывайте руками.','');
+  L.push('СПИСОК ВЕЩЕЙ');
+  items.forEach(function(it,i){
+    L.push('  '+pad2(i+1)+'. '+it.name+' — '+(rub(it.price)||'цена не указана')+' — фото: '+((it.photos||[]).length));
+  });
+  return crlf(L.join('\n'));
+}
+
+function makeZip(){
+  var items=exportItems();
+  if(!items.length){toast('В выбранную группу не попало ни одной вещи');return;}
+  toast('Собираю архив…');
+  var entries=[],jobs=[],fullPhotos=true,anyPhoto=false;
+  items.forEach(function(it,idx){
+    var folder=itemFolder(it,idx);
+    if(exportOpts.photos){
+      (it.photos||[]).forEach(function(ph,i){
+        anyPhoto=true;
+        jobs.push(photoBytes(ph).then(function(r){
+          if(!r.full)fullPhotos=false;
+          entries.push({name:folder+'/'+photoName(i),data:r.bytes,ord:idx*100+i});
+        }).catch(function(){fullPhotos=false;}));
+      });
+    }
+    if(exportOpts.text){
+      entries.push({name:folder+'/avito.txt',data:utf8('﻿'+itemTxt(it,'avito')),ord:idx*100+50});
+      entries.push({name:folder+'/youla.txt',data:utf8('﻿'+itemTxt(it,'youla')),ord:idx*100+51});
+    }
+  });
+  Promise.all(jobs).then(function(){
+    entries.sort(function(a,b){return (a.ord||0)-(b.ord||0);});
+    if(exportOpts.html)entries.push({name:'Объявления.html',data:utf8(buildHtmlPage(items))});
+    if(exportOpts.csv)entries.push({name:'Список вещей.csv',data:utf8(buildCsv(items))});
+    if(exportOpts.xml)entries.push({name:'avito-feed.xml',data:utf8(buildAvitoXml(items))});
+    if(exportOpts.yml)entries.push({name:'youla-feed.yml',data:utf8(buildYoulaYml(items))});
+    entries.push({name:'Как выкладывать.txt',data:utf8('﻿'+buildReadme(items,fullPhotos||!anyPhoto))});
+    try{
+      var blob=zipBuild(entries);
+      downloadBlob(blob,'obyavleniya-'+todayStr()+'.zip');
+      toast('Готово: '+plural(items.length,['вещь','вещи','вещей'])+', '+(blob.size/1048576).toFixed(1)+' МБ');
+      closeExport();
+    }catch(e){toast('Не удалось собрать архив: '+e.message);}
+  });
+}
+
+function openExport(){
+  var m=document.getElementById('modal'),st=settings();
+  var items=exportItems(),photos=0;
+  items.forEach(function(i){photos+=(i.photos||[]).length;});
+  m.hidden=false;
+  function ck(key,label){
+    return '<label style="display:flex;gap:7px;align-items:center;margin:5px 0;color:var(--ink);font-size:13.5px">'
+      +'<input type="checkbox" '+(exportOpts[key]?'checked ':'')+'data-f="xopt" data-k="'+key+'">'+label+'</label>';
+  }
+  m.innerHTML='<div class="modal-box"><h3>Архив объявлений</h3>'
+    +'<span class="seg backendpick">'
+    +'<button class="'+(exportOpts.scope==='sale'?'on':'')+'" data-a="x-scope" data-v="sale">все на продажу</button>'
+    +'<button class="'+(exportOpts.scope==='ready'?'on':'')+'" data-a="x-scope" data-v="ready">только готовые</button>'
+    +'</span>'
+    +'<p class="hint" id="x-info">Попадёт в архив: <b>'+plural(items.length,['вещь','вещи','вещей'])+'</b>, фотографий — '+photos+'.</p>'
+    +'<h4>Что положить</h4>'
+    +ck('photos','Фото по папкам')+ck('text','Тексты объявлений (avito.txt, youla.txt)')
+    +ck('html','Страница «Объявления.html» с кнопками «копировать»')+ck('csv','Таблица «Список вещей.csv»')
+    +ck('xml','Фид Авито (avito-feed.xml)')+ck('yml','Фид Юлы (youla-feed.yml)')
+    +'<h4>Для фидов и контактов</h4>'
+    +'<label for="x-manager">Имя продавца</label><input id="x-manager" type="text" value="'+esc(st.manager)+'" data-f="set-manager" placeholder="Андрей">'
+    +'<label for="x-phone">Телефон</label><input id="x-phone" type="text" value="'+esc(st.phone)+'" data-f="set-phone" placeholder="+7 900 000-00-00">'
+    +'<label for="x-address">Адрес / район</label><input id="x-address" type="text" value="'+esc(st.address)+'" data-f="set-address" placeholder="Москва, Тверская">'
+    +'<label for="x-photobase">Адрес папки с фото в интернете (для фидов)</label><input id="x-photobase" type="text" value="'+esc(st.photoBase)+'" data-f="set-photoBase" placeholder="https://…">'
+    +'<p class="hint">Фиды нужны только на платных тарифах продавца; площадки берут фото по ссылкам из интернета. Для обычной продажи руками они не нужны.</p>'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="x-close">Отмена</button>'
+    +'<button class="btn" data-a="x-make">Собрать архив</button></div></div>';
+}
+function closeExport(){closeModal();}
+
 /* ══════════ события ══════════ */
 function onClick(e){
   var b=e.target.closest('[data-a]');
@@ -1565,6 +1888,10 @@ function onClick(e){
     toast('Файл со списком для монитора скачан');
   }
   else if(a==='ad-mode'){adMode=b.dataset.v;renderDetail();}
+  else if(a==='x-open'){openExport();}
+  else if(a==='x-close'){closeExport();}
+  else if(a==='x-scope'){exportOpts.scope=b.dataset.v;openExport();}
+  else if(a==='x-make'){makeZip();}
   else if(a==='ad-copy-title'&&it){copyText(adTitle(it),'Заголовок');}
   else if(a==='ad-copy-text'&&it){copyText(adText(it),'Текст объявления');}
   else if(a==='add-instr'&&it){
@@ -1606,6 +1933,8 @@ function onChange(e){
   }
   var f=t.dataset&&t.dataset.f;
   if(!f)return;
+  if(f==='xopt'){exportOpts[t.dataset.k]=t.checked;openExport();return;}
+  if(f.indexOf('set-')===0){settings()[f.slice(4)]=t.value;touch();return;}
   if(f.indexOf('wish-')===0){
     var w0=(state.wishes||[]).filter(function(w){return w.id===t.dataset.id;})[0];
     if(!w0)return;
@@ -1635,6 +1964,14 @@ function onChange(e){
     (it.tasks||[]).forEach(function(x){if(x.id===t.dataset.sub)x.due=t.value||'';});
     renderNav();renderMain();
   }
+  else if(f==='pl-posted'){
+    var pp=adPlatforms(it)[t.dataset.k];
+    pp.posted=t.checked;
+    if(t.checked&&!pp.date)pp.date=todayStr();
+    if(!t.checked){pp.date='';pp.url='';}
+    renderDetail();
+  }
+  else if(f==='pl-url'){adPlatforms(it)[t.dataset.k].url=t.value;}
   else if(f.indexOf('ad-')===0){
     var ad0=adOf(it),key=f.slice(3);
     if(t.type==='checkbox')ad0[key]=t.checked;else ad0[key]=t.value;
@@ -1652,6 +1989,7 @@ function init(){
   if(!state.items)state.items=[];
   if(!state.events)state.events=[];
   if(!state.wishes)state.wishes=[];
+  if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
   document.addEventListener('click',onClick);
   document.addEventListener('change',onChange);
