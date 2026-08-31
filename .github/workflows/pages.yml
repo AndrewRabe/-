@@ -2,7 +2,7 @@ name: Публикация на GitHub Pages
 
 on:
   push:
-    branches: [main, claude/property-tracking-system-8mro7q]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
