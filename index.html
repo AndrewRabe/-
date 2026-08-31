@@ -228,7 +228,7 @@ details.help li{margin-bottom:4px}
 <div id="toast" hidden></div>
 <input id="photo-input" type="file" accept="image/*" hidden>
 <input id="import-input" type="file" accept="application/json,.json" hidden>
-<input id="import-ev-input" type="file" accept="application/json,.json" hidden>
+<input id="import-ev-input" type="file" accept=".json,.ics,application/json,text/calendar" hidden>
 
 <script id="app-code">
 (function(){
@@ -1085,7 +1085,7 @@ function openSettings(){
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
     +'<button class="btn ghost" data-a="import">Восстановить из файла</button>'
     +'<button class="btn ghost" data-a="import-ev">Добавить мероприятия из файла</button></div>'
-    +'<p class="hint">Копия содержит все объекты, задачи и мероприятия (без фото). «Добавить мероприятия» дописывает события из файла к текущим, ничего не стирая.</p>'
+    +'<p class="hint">Копия содержит все объекты, задачи и мероприятия (без фото). «Добавить мероприятия» дописывает события из файла к текущим, ничего не стирая; понимает файлы .ics — экспорт Google или Яндекс Календаря.</p>'
     +'<div class="modal-foot"><button class="btn ghost" data-a="settings-close">Закрыть</button></div></div>';
   s.innerHTML=h;
 }
@@ -1185,12 +1185,61 @@ function doImport(file){
   };
   fr.readAsText(file);
 }
+function parseIcs(text){
+  /* экспорт Google/Яндекс Календаря: берём будущие события; повторяющиеся
+     ежегодные (дни рождения) переносим на ближайшую будущую дату */
+  var lines=String(text).split(/\r?\n/),unfolded=[];
+  lines.forEach(function(l){
+    if(/^[ \t]/.test(l)&&unfolded.length)unfolded[unfolded.length-1]+=l.slice(1);
+    else unfolded.push(l);
+  });
+  var evs=[],cur=null;
+  unfolded.forEach(function(l){
+    if(l==='BEGIN:VEVENT'){cur={};return;}
+    if(l==='END:VEVENT'){if(cur)evs.push(cur);cur=null;return;}
+    if(!cur)return;
+    var i=l.indexOf(':');if(i<0)return;
+    var name=l.slice(0,i).split(';')[0].toUpperCase(),val=l.slice(i+1);
+    if(name==='SUMMARY')cur.summary=val.replace(/\\n/g,' — ').replace(/\\([,;\\])/g,'$1').trim();
+    else if(name==='DTSTART')cur.dtRaw=val;
+    else if(name==='RRULE')cur.rrule=val;
+    else if(name==='STATUS')cur.status=val;
+  });
+  var out=[],today=todayStr();
+  evs.forEach(function(e){
+    if(!e.summary||!e.dtRaw)return;
+    if(/CANCELLED/i.test(e.status||''))return;
+    var m=/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})\d{2}(Z?))?/.exec(e.dtRaw);
+    if(!m)return;
+    var date,time='';
+    if(m[4]!=null){
+      if(m[6]==='Z'){
+        var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]));
+        date=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+        time=pad2(d.getHours())+':'+pad2(d.getMinutes());
+      }else{date=m[1]+'-'+m[2]+'-'+m[3];time=m[4]+':'+m[5];}
+    }else date=m[1]+'-'+m[2]+'-'+m[3];
+    if(e.rrule&&/FREQ=YEARLY/i.test(e.rrule)){
+      var y=parseInt(today.slice(0,4),10),cand=y+date.slice(4);
+      if(cand<today)cand=(y+1)+date.slice(4);
+      date=cand;
+    }
+    if(date<today)return;
+    out.push({title:e.summary,date:date,time:time});
+  });
+  return out;
+}
 function doImportEvents(file){
   var fr=new FileReader();
   fr.onload=function(){
     try{
-      var data=JSON.parse(fr.result);
-      var arr=Array.isArray(data)?data:(data&&Array.isArray(data.events)?data.events:null);
+      var arr;
+      if(/BEGIN:VCALENDAR/.test(fr.result)){
+        arr=parseIcs(fr.result);
+      }else{
+        var data=JSON.parse(fr.result);
+        arr=Array.isArray(data)?data:(data&&Array.isArray(data.events)?data.events:null);
+      }
       if(!arr)throw new Error('bad');
       var have={};
       (state.events||[]).forEach(function(e){have[e.title+'|'+e.date]=1;});
