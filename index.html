@@ -149,6 +149,35 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 #pviewer .tools{display:flex;gap:14px}
 #pviewer button{color:#fff;background:rgba(255,255,255,.14);border-radius:9px;padding:8px 16px}
 
+/* ── желания ── */
+.wish{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.wish.hit{border-color:var(--accent)}
+.wish.bought{opacity:.55}
+.wish-top{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.wish-top input[data-f="wish-title"]{flex:1;min-width:0;font-weight:600;background:transparent;border-color:transparent}
+.wish-top input[data-f="wish-title"]:hover,.wish-top input[data-f="wish-title"]:focus{border-color:var(--line);background:var(--surface)}
+.wish-prices{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;margin-bottom:8px}
+.wish-prices label{color:var(--muted);font-size:12px}
+.wish-prices input{width:110px;padding:4px 8px;font-size:13px}
+.wish-hit{color:var(--accent);font-weight:700;font-size:13px}
+.wish-meta{font-size:11.5px;color:var(--muted)}
+.mlink{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--surface2);color:var(--ink);text-decoration:none;margin:0 6px 6px 0}
+.mlink:hover{background:var(--accent-soft);color:var(--accent)}
+.mlink .x{font-size:12px;padding:0 2px}
+
+/* ── объявление ── */
+.ad-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ad-grid .full{grid-column:1/-1}
+.ad-grid label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.ad-grid input[type=text],.ad-grid select{width:100%}
+.ad-ways{display:flex;gap:14px;flex-wrap:wrap;font-size:13.5px}
+.ad-ways label{display:flex;gap:6px;align-items:center;cursor:pointer;margin:0;color:var(--ink);font-size:13.5px}
+.ad-out{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px;white-space:pre-wrap;margin-top:8px;max-height:260px;overflow-y:auto}
+.ad-counters{font-size:12px;color:var(--muted);margin-top:6px}
+.ad-counters b.bad{color:var(--danger)}
+.ad-warn{font-size:12.5px;color:var(--sale);margin:2px 0}
+.ad-warn.bad{color:var(--danger)}
+
 /* ── календарь ── */
 .cal-head{display:flex;align-items:center;gap:6px;margin:0 0 10px}
 .cal-head h2{margin:0;font-family:'PT Serif',Georgia,serif;font-size:20px;flex:1;text-transform:capitalize}
@@ -234,6 +263,9 @@ details.help li{margin-bottom:4px}
 (function(){
 'use strict';
 var CATS={home:{label:'Дом',icon:'🏠'},car:{label:'Машина',icon:'🚗'},tech:{label:'Техника',icon:'🔧'},stuff:{label:'Вещи',icon:'📦'}};
+var MARKETS={ozon:'Ozon',wb:'Wildberries',ym:'Я.Маркет',avito:'Авито',other:'Другое'};
+var AD_CONDS=['новое','как новое','отличное','хорошее','удовлетворительное','на запчасти'];
+var AD_LIMITS={avito:{title:50,text:3000},youla:{title:50,text:5000}};
 var LSKEY='home-registry-v1', GHKEY='home-registry-gh', YDKEY='home-registry-yd', BACKKEY='home-registry-backend';
 var STATE_PATH='data/state.json';
 var YD_API='https://cloud-api.yandex.net/v1/disk';
@@ -272,6 +304,60 @@ function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth(
 function fmtDue(s){var p=String(s).split('-');if(p.length<3)return s;return parseInt(p[2],10)+'.'+p[1];}
 function fmtDayTitle(s){var p=String(s).split('-');if(p.length<3)return s;return parseInt(p[2],10)+' '+['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][parseInt(p[1],10)-1];}
 function dueClass(d){var t=todayStr();return d<t?'over':d===t?'today':'';}
+function moneyNum(s){var d=String(s==null?'':s).replace(/[^\d]/g,'');return d?parseInt(d,10):0;}
+function copyText(text,label){
+  var done=function(){toast((label||'Текст')+' — скопировано');};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done,function(){fallbackCopy(text);done();});
+  }else{fallbackCopy(text);done();}
+}
+function fallbackCopy(text){
+  var ta=document.createElement('textarea');
+  ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');}catch(e){}
+  ta.remove();
+}
+
+/* ══ объявление о продаже ══ */
+var adMode='full';
+function adOf(it){return it.ad||(it.ad={cond:'',bargain:false,kit:'',defects:'',used:'',reason:'',pickup:false,send:false,meet:false});}
+function adTitle(it){return String(it.name||'').trim();}
+function adText(it){
+  var ad=adOf(it),lines=[];
+  lines.push(adTitle(it)+'.');
+  if(ad.cond)lines.push('Состояние: '+ad.cond+'.');
+  if(it.price)lines.push('Цена: '+it.price+(ad.bargain?', возможен торг':'')+'.');
+  if(adMode==='full'&&(it.specs||[]).length){
+    lines.push('','Характеристики:');
+    it.specs.forEach(function(s){if(s.k)lines.push('— '+s.k+(s.v?': '+s.v:''));});
+  }
+  if(ad.kit)lines.push('','Комплект: '+ad.kit+'.');
+  if(ad.used)lines.push('Срок использования: '+ad.used+'.');
+  if(ad.defects)lines.push('Недостатки: '+ad.defects+'.');
+  if(adMode==='full'&&ad.reason)lines.push('Причина продажи: '+ad.reason+'.');
+  var ways=[];
+  if(ad.pickup)ways.push('самовывоз');
+  if(ad.send)ways.push('отправлю');
+  if(ad.meet)ways.push('могу привезти');
+  if(ways.length)lines.push('','Передача: '+ways.join(', ')+'.');
+  return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function adChecks(it){
+  var out=[],ad=adOf(it),title=adTitle(it),text=adText(it);
+  if(!moneyNum(it.price))out.push({bad:true,msg:'Не указана цена (поле «Продажа» выше)'});
+  if(!(it.photos||[]).length)out.push({bad:true,msg:'Нет фото — объявления без фото почти не смотрят'});
+  else if((it.photos||[]).length<3)out.push({bad:false,msg:'Мало фото — лучше 3–6 с разных сторон'});
+  if(!ad.cond)out.push({bad:false,msg:'Не выбрано состояние'});
+  if(!ad.pickup&&!ad.send&&!ad.meet)out.push({bad:false,msg:'Не отмечен способ передачи'});
+  if(title.length>AD_LIMITS.avito.title)out.push({bad:true,msg:'Заголовок длиннее 50 знаков — площадки обрежут'});
+  if(/[A-ZА-ЯЁ]{5,}/.test(title))out.push({bad:false,msg:'ЗАГЛАВНЫЕ в заголовке — площадки такое понижают'});
+  if(/!{2,}|\*{2,}/.test(title+' '+text))out.push({bad:false,msg:'Уберите «!!!» и звёздочки — выглядит как спам'});
+  if(/(\+7|8)[\s(-]?\d{3}[\s)-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/.test(text))out.push({bad:true,msg:'Телефон в тексте — на площадках за это блокируют'});
+  if(/авито|avito/i.test(text)&&/юла|youla/i.test(text))out.push({bad:true,msg:'Не упоминайте одну площадку в объявлении для другой'});
+  if(text.length>AD_LIMITS.avito.text)out.push({bad:false,msg:'Текст длиннее лимита Авито ('+AD_LIMITS.avito.text+') — там обрежется'});
+  return out;
+}
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}
 function lsSet(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
@@ -610,6 +696,7 @@ function adoptRemote(remote){
   state=remote;
   if(!state.items)state.items=[];
   if(!state.events)state.events=[];
+  if(!state.wishes)state.wishes=[];
   writeLocal();renderAll();
 }
 function pull(quiet){
@@ -770,6 +857,7 @@ function renderNav(){
     +nv('tasks','Задачи',tasksN,'☑')
     +nv('cal','Календарь',att,'📅')
     +nv('plans','Покупки и планы',plansN,'🛒')
+    +nv('wish','Желания',(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length,'⭐')
     +'</div><div class="navgroup"><h4>Статусы</h4>'
     +nv('sale','На продажу',saleN,'💰')
     +nv('archive','Архив',archN,'🗄')
@@ -865,6 +953,45 @@ function renderMain(){
       +'<div class="addrow"><select id="ev-item" aria-label="Связать с объектом"><option value="">Без объекта</option>'
       +state.items.filter(visible).map(function(it){return '<option value="'+it.id+'">'+CATS[it.cat].icon+' '+esc(it.name)+'</option>';}).join('')
       +'</select></div></div>';
+  }else if(v==='wish'){
+    var ws=(state.wishes||[]).slice().sort(function(a,b){
+      if((a.status==='bought')!==(b.status==='bought'))return a.status==='bought'?1:-1;
+      return 0;
+    });
+    h=title('⭐ Желания',ws.filter(function(w){return w.status!=='bought';}).length)
+      +'<p class="hint" style="margin:0 0 12px">Что хотите купить: следите за ценой и целью. Автоматический мониторинг Ozon делает программа-монитор на компьютере — кнопка ниже готовит для неё список.</p>'
+      +'<div class="addrow" style="margin:0 0 14px"><input type="text" id="wish-new" placeholder="Что хотите купить…">'
+      +'<input type="text" id="wish-new-target" placeholder="Целевая цена" style="width:120px">'
+      +'<button class="btn" data-a="add-wish">Добавить</button></div>';
+    ws.forEach(function(w){
+      var tgt=moneyNum(w.target),last=moneyNum(w.last);
+      var hit=w.status!=='bought'&&tgt&&last&&last<=tgt;
+      h+='<div class="wish'+(hit?' hit':'')+(w.status==='bought'?' bought':'')+'">'
+        +'<div class="wish-top"><span>'+(w.status==='bought'?'✅':'⭐')+'</span>'
+        +'<input value="'+esc(w.title)+'" data-f="wish-title" data-id="'+w.id+'" aria-label="Название">'
+        +'<button class="btn ghost" style="padding:5px 10px;font-size:12.5px" data-a="wish-bought" data-id="'+w.id+'">'+(w.status==='bought'?'Вернуть':'Куплено')+'</button>'
+        +'<button class="x" title="Удалить" data-a="del-wish" data-id="'+w.id+'">✕</button></div>'
+        +'<div class="wish-prices">'
+        +'<label>цель</label><input value="'+esc(w.target||'')+'" data-f="wish-target" data-id="'+w.id+'" placeholder="15 000">'
+        +'<label>сейчас</label><input value="'+esc(w.last||'')+'" data-f="wish-last" data-id="'+w.id+'" placeholder="обновите цену">'
+        +(w.min?'<span class="wish-meta">минимум: '+esc(w.min)+'</span>':'')
+        +(w.lastAt?'<span class="wish-meta">обновлено '+fmtDue(w.lastAt)+'</span>':'')
+        +(hit?'<span class="wish-hit">🎯 цена достигла цели</span>':'')
+        +'</div><div>';
+      (w.links||[]).forEach(function(l){
+        h+='<span class="mlink"><a class="mlink" style="margin:0;padding:0;background:none" href="'+esc(l.url)+'" target="_blank" rel="noopener">'+(MARKETS[l.market]||'Ссылка')+' ↗</a>'
+          +'<button class="x" title="Убрать ссылку" data-a="del-wish-link" data-id="'+w.id+'" data-sub="'+l.id+'">✕</button></span>';
+      });
+      h+='</div><div class="addrow"><select id="wl-market-'+w.id+'" aria-label="Площадка">';
+      Object.keys(MARKETS).forEach(function(mk){h+='<option value="'+mk+'">'+MARKETS[mk]+'</option>';});
+      h+='</select><input type="text" id="wl-url-'+w.id+'" placeholder="Ссылка на товар…">'
+        +'<button class="btn ghost" data-a="add-wish-link" data-id="'+w.id+'">Добавить</button></div>'
+        +'</div>';
+    });
+    if(!ws.length)h+='<div class="empty">Пока пусто. Добавьте первое желание — название и целевую цену.</div>';
+    var ozonN=ws.filter(function(w){return w.status!=='bought'&&(w.links||[]).some(function(l){return l.market==='ozon';});}).length;
+    if(ozonN)h+='<div class="btnrow" style="margin-top:14px"><button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
+      +'<p class="hint">Скачается список команд «monitor.py add …» для вашей программы мониторинга цен — она пришлёт в Telegram, когда цена упадёт.</p>';
   }else if(v==='plans'){
     h=title('🛒 Покупки и планы',null);
     var buy=[],imp=[];
@@ -913,7 +1040,41 @@ function renderDetail(){
     +'</span></div>';
 
   if(it.status==='sale'){
-    h+='<section class="d-sec"><h3>Продажа</h3><input type="text" placeholder="Цена, площадка, состояние…" value="'+esc(it.price)+'" data-f="price" data-id="'+it.id+'" style="width:100%"></section>';
+    var ad=adOf(it);
+    h+='<section class="d-sec"><h3>Продажа</h3>'
+      +'<input type="text" placeholder="Цена, например: 12 500" value="'+esc(it.price)+'" data-f="price" data-id="'+it.id+'" style="width:100%">'
+      +'<div class="ad-grid" style="margin-top:10px">'
+      +'<div><label>Состояние</label><select data-f="ad-cond" data-id="'+it.id+'"><option value="">—</option>'
+      +AD_CONDS.map(function(c){return '<option value="'+c+'"'+(ad.cond===c?' selected':'')+'>'+c+'</option>';}).join('')
+      +'</select></div>'
+      +'<div><label>Срок использования</label><input type="text" value="'+esc(ad.used)+'" data-f="ad-used" data-id="'+it.id+'" placeholder="2 года"></div>'
+      +'<div class="full"><label>Комплект</label><input type="text" value="'+esc(ad.kit)+'" data-f="ad-kit" data-id="'+it.id+'" placeholder="коробка, зарядка, чехол"></div>'
+      +'<div class="full"><label>Недостатки (честно)</label><input type="text" value="'+esc(ad.defects)+'" data-f="ad-defects" data-id="'+it.id+'" placeholder="царапина на углу"></div>'
+      +'<div class="full"><label>Причина продажи</label><input type="text" value="'+esc(ad.reason)+'" data-f="ad-reason" data-id="'+it.id+'" placeholder="купили новее"></div>'
+      +'</div>'
+      +'<div class="ad-ways" style="margin-top:10px">'
+      +'<label><input type="checkbox" '+(ad.bargain?'checked ':'')+'data-f="ad-bargain" data-id="'+it.id+'">торг</label>'
+      +'<label><input type="checkbox" '+(ad.pickup?'checked ':'')+'data-f="ad-pickup" data-id="'+it.id+'">самовывоз</label>'
+      +'<label><input type="checkbox" '+(ad.send?'checked ':'')+'data-f="ad-send" data-id="'+it.id+'">отправлю</label>'
+      +'<label><input type="checkbox" '+(ad.meet?'checked ':'')+'data-f="ad-meet" data-id="'+it.id+'">привезу</label>'
+      +'</div></section>';
+
+    var warns=adChecks(it),ttl=adTitle(it),txt=adText(it);
+    h+='<section class="d-sec"><h3>Объявление (Авито / Юла)</h3>'
+      +'<div class="kindpick" style="margin-bottom:8px">'
+      +'<button class="'+(adMode==='short'?'on':'')+'" data-a="ad-mode" data-v="short">кратко</button>'
+      +'<button class="'+(adMode==='full'?'on':'')+'" data-a="ad-mode" data-v="full">подробно</button>'
+      +'</div>'
+      +warns.map(function(w){return '<p class="ad-warn'+(w.bad?' bad':'')+'">⚠ '+w.msg+'</p>';}).join('')
+      +'<div class="ad-out">'+esc(txt)+'</div>'
+      +'<div class="ad-counters">Заголовок: <b class="'+(ttl.length>50?'bad':'')+'">'+ttl.length+'</b>/50 · Текст: <b class="'+(txt.length>AD_LIMITS.avito.text?'bad':'')+'">'+txt.length+'</b>/'+AD_LIMITS.avito.text+' (Авито), /'+AD_LIMITS.youla.text+' (Юла)</div>'
+      +'<div class="btnrow" style="margin-top:8px">'
+      +'<button class="btn ghost" data-a="ad-copy-title" data-id="'+it.id+'">Копировать заголовок</button>'
+      +'<button class="btn ghost" data-a="ad-copy-text" data-id="'+it.id+'">Копировать текст</button>'
+      +((it.photos||[]).length&&String((it.photos[0]||{}).path).indexOf('app:/')===0
+        ?'<button class="btn ghost" data-a="photo-disk" data-dpath="'+esc(it.photos[0].path)+'">Фото в Диске ↗</button>':'')
+      +'</div>'
+      +'<p class="hint">Фото в полном размере лежат в папке приложения на Яндекс Диске — прикрепите их к объявлению из приложения Диска или галереи.</p></section>';
   }
 
   h+='<section class="d-sec"><h3>Фото</h3><div class="photos">';
@@ -1352,6 +1513,60 @@ function onClick(e){
     touch();renderNav();renderMain();if(route.item)renderDetail();
   }
   else if(a==='import-ev'){document.getElementById('import-ev-input').click();}
+  else if(a==='add-wish'){
+    var wn=document.getElementById('wish-new'),wt=document.getElementById('wish-new-target');
+    var wtitle=wn.value.trim();
+    if(!wtitle){wn.focus();return;}
+    state.wishes.unshift({id:uid(),title:wtitle,target:wt.value.trim(),last:'',lastAt:'',min:'',links:[],status:'active'});
+    refocus='wish-new';touch();renderNav();renderMain();
+  }
+  else if(a==='del-wish'){
+    state.wishes=(state.wishes||[]).filter(function(w){return w.id!==id;});
+    touch();renderNav();renderMain();
+  }
+  else if(a==='wish-bought'){
+    (state.wishes||[]).forEach(function(w){if(w.id===id)w.status=(w.status==='bought'?'active':'bought');});
+    touch();renderNav();renderMain();
+  }
+  else if(a==='add-wish-link'){
+    var wu=document.getElementById('wl-url-'+id),wm=document.getElementById('wl-market-'+id);
+    var url=wu?wu.value.trim():'';
+    if(!url){if(wu)wu.focus();return;}
+    if(!/^https?:\/\//i.test(url))url='https://'+url;
+    (state.wishes||[]).forEach(function(w){
+      if(w.id===id){w.links=w.links||[];w.links.push({id:uid(),market:wm?wm.value:'other',url:url});}
+    });
+    touch();renderMain();
+  }
+  else if(a==='del-wish-link'){
+    (state.wishes||[]).forEach(function(w){
+      if(w.id===id)w.links=(w.links||[]).filter(function(l){return l.id!==b.dataset.sub;});
+    });
+    touch();renderMain();
+  }
+  else if(a==='wish-export-monitor'){
+    var cmds=['@echo off','chcp 65001 >nul','rem Список желаний из «Домашнего реестра» для ozon-price-monitor','rem Запустите этот файл в папке монитора (или скопируйте команды).',''];
+    (state.wishes||[]).forEach(function(w){
+      if(w.status==='bought')return;
+      (w.links||[]).forEach(function(l){
+        if(l.market!=='ozon')return;
+        var c='python monitor.py add "'+l.url+'" --name "'+String(w.title).replace(/"/g,'')+'"';
+        var tn=moneyNum(w.target);
+        if(tn)c+=' --target '+tn;
+        cmds.push(c);
+      });
+    });
+    var blob=new Blob([cmds.join('\r\n')+'\r\n'],{type:'text/plain'});
+    var a2=document.createElement('a');
+    a2.href=URL.createObjectURL(blob);
+    a2.download='ozon-monitor-add.bat';
+    document.body.appendChild(a2);a2.click();a2.remove();
+    setTimeout(function(){URL.revokeObjectURL(a2.href);},5000);
+    toast('Файл со списком для монитора скачан');
+  }
+  else if(a==='ad-mode'){adMode=b.dataset.v;renderDetail();}
+  else if(a==='ad-copy-title'&&it){copyText(adTitle(it),'Заголовок');}
+  else if(a==='ad-copy-text'&&it){copyText(adText(it),'Текст объявления');}
   else if(a==='add-instr'&&it){
     var ins={id:uid(),title:'',text:''};
     it.instructions.push(ins);editingInstr[ins.id]=true;
@@ -1391,6 +1606,20 @@ function onChange(e){
   }
   var f=t.dataset&&t.dataset.f;
   if(!f)return;
+  if(f.indexOf('wish-')===0){
+    var w0=(state.wishes||[]).filter(function(w){return w.id===t.dataset.id;})[0];
+    if(!w0)return;
+    if(f==='wish-title')w0.title=t.value.trim()||'Без названия';
+    else if(f==='wish-target')w0.target=t.value.trim();
+    else if(f==='wish-last'){
+      w0.last=t.value.trim();
+      w0.lastAt=todayStr();
+      var ln=moneyNum(w0.last),mn=moneyNum(w0.min);
+      if(ln&&(!mn||ln<mn))w0.min=w0.last;
+    }
+    touch();renderNav();renderMain();
+    return;
+  }
   var it=find(t.dataset.id);if(!it)return;
   if(f==='name'){it.name=t.value.trim()||'Без названия';renderNav();renderMain();}
   else if(f==='notes'){it.notes=t.value;renderMain();}
@@ -1406,6 +1635,11 @@ function onChange(e){
     (it.tasks||[]).forEach(function(x){if(x.id===t.dataset.sub)x.due=t.value||'';});
     renderNav();renderMain();
   }
+  else if(f.indexOf('ad-')===0){
+    var ad0=adOf(it),key=f.slice(3);
+    if(t.type==='checkbox')ad0[key]=t.checked;else ad0[key]=t.value;
+    renderDetail();
+  }
   touch();
 }
 
@@ -1417,6 +1651,7 @@ function init(){
   state=readLocal()||SEED;
   if(!state.items)state.items=[];
   if(!state.events)state.events=[];
+  if(!state.wishes)state.wishes=[];
   document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
   document.addEventListener('click',onClick);
   document.addEventListener('change',onChange);
