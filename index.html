@@ -607,6 +607,7 @@ function push(attempt){
       toast('На другом устройстве версия новее — загрузил её');
       setChip('saved');return;
     }
+    if(got&&(got.data.rev||0)===(state.rev||0)){setChip('saved');return;} /* уже совпадает */
     return p.putState(JSON.stringify(state),got?got.tag:null)
       .then(function(){setChip('saved');});
   }).catch(function(e){
@@ -1221,7 +1222,9 @@ function init(){
     setChip('pending');
     pull(true).then(function(){if(provider())push();});
   }else if(provider()){
-    setChip('pending');pull(true);
+    /* при каждом открытии: сначала забрать более новое, затем долить своё, если в хранилище пусто или старее */
+    setChip('pending');
+    pull(true).then(function(){if(provider())push();});
   }else setChip('local');
 }
 init();
