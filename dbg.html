@@ -308,6 +308,7 @@ function moneyNum(s){var d=String(s==null?'':s).replace(/[^\d]/g,'');return d?pa
 function monPrice(w){var m=monPrices[w.id];return m&&m.p?parseInt(m.p,10):0;}
 function monHtml(w){
   var m=monPrices[w.id];
+  console.log('DBG monHtml id='+w.id+' found='+(!!m)+' keys='+Object.keys(monPrices).join(','));
   if(!m)return '';
   if(m.s==='err')return '<span class="wish-meta">монитор: не смог проверить'+(m.t?' '+fmtDue(m.t):'')+'</span>';
   var out='<span class="wish-hit" style="font-weight:600">монитор: '+parseInt(m.p||0,10).toLocaleString('ru-RU')+' \u20BD</span>';
@@ -594,6 +595,8 @@ function ydPricesLoad(force){
       var map={};
       (items||[]).forEach(function(f){if(f&&f.name&&f.custom_properties)map[f.name]=f.custom_properties;});
       monPrices=map;
+      console.log('DBG map keys='+Object.keys(map).join(',')+' sample='+JSON.stringify(map[Object.keys(map)[0]]||null));
+      window.__mp=map;
       return map;
     }).catch(function(){ydPricesP=null;return {};});
   return ydPricesP;
