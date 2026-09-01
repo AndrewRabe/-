@@ -183,6 +183,21 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .ad-warn{font-size:12.5px;color:var(--sale);margin:2px 0}
 .ad-warn.bad{color:var(--danger)}
 
+/* ── дни рождения и повторы ── */
+.cal-dot.b{background:var(--sale)}
+.cal-dot.r{background:#7B6CD9}
+.bd{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line)}
+.bd:first-of-type{border-top:none}
+.bd .ic{font-size:18px}
+.bd .nm{flex:1;min-width:0;font-weight:600;font-size:14px}
+.bd .when{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.bd.soon .when{color:var(--sale);font-weight:600}
+.bd.today .when{color:var(--accent);font-weight:700}
+.rep{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px;white-space:nowrap}
+.dowpick{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+.dowpick button{width:34px;height:30px;border-radius:8px;background:var(--surface2);color:var(--muted);font-size:12.5px}
+.dowpick button.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
+
 /* ── обслуживание машины ── */
 .odo{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .odo input{width:130px;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
@@ -289,6 +304,7 @@ details.help li{margin-bottom:4px}
 <input id="photo-input" type="file" accept="image/*" hidden>
 <input id="import-input" type="file" accept="application/json,.json" hidden>
 <input id="import-ev-input" type="file" accept=".json,.ics,application/json,text/calendar" hidden>
+<input id="import-tasks-input" type="file" accept=".json,.txt,.csv,application/json,text/plain" hidden>
 
 <script id="app-code">
 (function(){
@@ -424,7 +440,7 @@ var state=null, saveTimer=null, retryTimer=null, syncing=false, lastPull=0;
 var route={view:'all',item:null};
 var _t0=new Date(), calY=_t0.getFullYear(), calM=_t0.getMonth(), calSel=todayStr();
 var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null, settingsBackend=null;
-var confirmPhoto=null, confirmPhotoTimer=null;
+var confirmPhoto=null, confirmPhotoTimer=null, newRepeat='', newDays=[];
 var photoCache={};
 
 /* ══════════ бэкенд: GitHub ══════════ */
@@ -764,6 +780,7 @@ function adoptRemote(remote){
   if(!state.items)state.items=[];
   if(!state.events)state.events=[];
   if(!state.wishes)state.wishes=[];
+  if(!state.birthdays)state.birthdays=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   writeLocal();renderAll();
 }
@@ -893,6 +910,47 @@ function delPhoto(it,photoId){
 }
 
 /* ══════════ данные ══════════ */
+var REPEATS={'':'один раз',daily:'каждый день',weekly:'каждую неделю',monthly:'каждый месяц',yearly:'каждый год'};
+function dowIndex(iso){var d=new Date(iso);return isNaN(d)?0:(d.getDay()+6)%7;} /* 0 = понедельник */
+function monthDay(iso){return String(iso||'').slice(5);}
+/* приходится ли повторяющееся мероприятие на этот день */
+function eventOn(ev,ds){
+  if(!ev.date)return false;
+  if(ds<ev.date)return false;
+  if(ev.until&&ds>ev.until)return false;
+  var r=ev.repeat||'';
+  if(!r)return ds===ev.date;
+  if(r==='daily')return true;
+  if(r==='weekly'){
+    var days=(ev.days&&ev.days.length)?ev.days:[dowIndex(ev.date)];
+    if(days.indexOf(dowIndex(ds))<0)return false;
+    var weeks=Math.floor(daysBetween(ev.date,ds)/7);
+    return (ev.interval||1)<2||weeks%(ev.interval||1)===0;
+  }
+  if(r==='monthly')return ds.slice(8)===ev.date.slice(8);
+  if(r==='yearly')return monthDay(ds)===monthDay(ev.date);
+  return false;
+}
+function eventsOn(ds){return (state.events||[]).filter(function(ev){return eventOn(ev,ds);});}
+/* дни рождения */
+function bdNext(bd){
+  var md=monthDay(bd.date),today=todayStr(),y=parseInt(today.slice(0,4),10);
+  var cand=y+'-'+md;
+  if(cand<today)cand=(y+1)+'-'+md;
+  return cand;
+}
+function bdAge(bd,onDate){
+  if(bd.noAge)return null;
+  var by=parseInt(String(bd.date).slice(0,4),10);
+  if(!by||by<1900)return null;
+  return parseInt(String(onDate).slice(0,4),10)-by;
+}
+function bdsOn(ds){return (state.birthdays||[]).filter(function(bd){return monthDay(bd.date)===monthDay(ds);});}
+function bdWhen(bd){
+  var next=bdNext(bd),d=daysBetween(todayStr(),next),age=bdAge(bd,next);
+  var txt=d===0?'сегодня':d===1?'завтра':'через '+plural(d,['день','дня','дней']);
+  return {days:d,text:txt+(age!=null?' · '+plural(age,['год','года','лет']):''),date:next,cls:d===0?'today':d<=14?'soon':''};
+}
 var SVC_PRESETS=[
   {name:'Масло и масляный фильтр',km:10000,months:12},
   {name:'Воздушный фильтр',km:20000,months:24},
@@ -977,10 +1035,11 @@ function renderNav(){
   });
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
-  (state.events||[]).forEach(function(e){if(e.date===today)att++;});
+  att+=eventsOn(today).length+bdsOn(today).length;
   h+='</div><div class="navgroup"><h4>Сводки</h4>'
     +nv('tasks','Задачи',tasksN,'☑')
     +nv('cal','Календарь',att,'📅')
+    +nv('bd','Дни рождения',(state.birthdays||[]).length,'🎂')
     +nv('plans','Покупки и планы',plansN,'🛒')
     +nv('wish','Желания',(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length,'⭐')
     +'</div><div class="navgroup"><h4>Статусы</h4>'
@@ -1049,11 +1108,10 @@ function renderMain(){
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
         +'<p class="hint">Задача попадёт в карточку выбранного объекта, а со сроком — ещё и в календарь.</p></div>';
   }else if(v==='cal'){
-    var tasksBy={},evBy={};
+    var tasksBy={};
     state.items.filter(visible).forEach(function(it){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.due)(tasksBy[t.due]=tasksBy[t.due]||[]).push({it:it,t:t});});
     });
-    (state.events||[]).forEach(function(ev){(evBy[ev.date]=evBy[ev.date]||[]).push(ev);});
     var today=todayStr();
     h='<div class="cal-head"><h2>'+MONTHS[calM]+' '+calY+'</h2>'
       +'<button data-a="cal-nav" data-v="-1" title="Предыдущий месяц">‹</button>'
@@ -1067,15 +1125,22 @@ function renderMain(){
       var d=new Date(calY,calM,i-startDow+1);
       var ds=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
       var cls='cal-cell'+(d.getMonth()!==calM?' dim':'')+(ds===today?' today':'')+(ds===calSel?' sel':'');
-      var dots='',k;
+      var dayEv=eventsOn(ds),dayBd=bdsOn(ds),dots='',k;
       for(k=0;k<Math.min((tasksBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot t"></span>';
-      for(k=0;k<Math.min((evBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot e"></span>';
+      for(k=0;k<Math.min(dayEv.length,3);k++)dots+='<span class="cal-dot '+(dayEv[k].repeat?'r':'e')+'"></span>';
+      for(k=0;k<Math.min(dayBd.length,2);k++)dots+='<span class="cal-dot b"></span>';
       h+='<div class="'+cls+'" data-a="cal-day" data-v="'+ds+'" role="button" tabindex="0"><span class="cal-n">'+d.getDate()+'</span><span class="cal-dots">'+dots+'</span></div>';
     }
-    h+='</div><div class="cal-legend"><span><span class="cal-dot t"></span>задачи со сроком</span><span><span class="cal-dot e"></span>мероприятия</span></div>';
+    h+='</div><div class="cal-legend"><span><span class="cal-dot t"></span>задачи</span><span><span class="cal-dot e"></span>мероприятия</span>'
+      +'<span><span class="cal-dot r"></span>повторяющиеся</span><span><span class="cal-dot b"></span>дни рождения</span></div>';
     var selT=(tasksBy[calSel]||[]);
-    var selE=(evBy[calSel]||[]).slice().sort(function(a,b){return (a.time||'')<(b.time||'')?-1:1;});
+    var selE=eventsOn(calSel).slice().sort(function(a,b){return (a.time||'')<(b.time||'')?-1:1;});
+    var selB=bdsOn(calSel);
     h+='<div class="groupblock"><h3>📅 '+fmtDayTitle(calSel)+'</h3>';
+    selB.forEach(function(bd){
+      var age=bdAge(bd,calSel);
+      h+='<div class="row"><span class="ev-time">🎂</span><span class="t">'+esc(bd.name)+(age!=null?' — '+plural(age,['год','года','лет']):'')+'</span></div>';
+    });
     selT.forEach(function(e){
       h+='<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+e.t.id+'">'
         +'<span class="t">'+esc(e.t.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
@@ -1084,15 +1149,23 @@ function renderMain(){
     selE.forEach(function(ev){
       var lit=ev.itemId?find(ev.itemId):null;
       h+='<div class="row"><span class="ev-time">'+(ev.time?esc(ev.time):'•')+'</span><span class="t">'+esc(ev.title)+'</span>'
+        +(ev.repeat?'<span class="rep">'+REPEATS[ev.repeat]+'</span>':'')
         +(lit?'<span class="src" data-a="open" data-id="'+lit.id+'">'+esc(lit.name)+'</span>':'')
-        +'<button class="x" title="Удалить" data-a="del-event" data-sub="'+ev.id+'">✕</button></div>';
+        +'<button class="x" title="'+(ev.repeat?'Удалить все повторы':'Удалить')+'" data-a="del-event" data-sub="'+ev.id+'">✕</button></div>';
     });
-    if(!selT.length&&!selE.length)h+='<p class="hint">На этот день ничего не запланировано.</p>';
+    if(!selT.length&&!selE.length&&!selB.length)h+='<p class="hint">На этот день ничего не запланировано.</p>';
     h+='<div class="addrow"><input type="text" id="ev-title" placeholder="Новое мероприятие в этот день…"><input type="time" id="ev-time">'
       +'<button class="btn ghost" data-a="add-event">Добавить</button></div>'
-      +'<div class="addrow"><select id="ev-item" aria-label="Связать с объектом"><option value="">Без объекта</option>'
+      +'<div class="addrow"><select id="ev-repeat" aria-label="Повтор">'
+      +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'"'+(newRepeat===r?' selected':'')+'>'+REPEATS[r]+'</option>';}).join('')
+      +'</select>'
+      +'<select id="ev-item" aria-label="Связать с объектом"><option value="">Без объекта</option>'
       +state.items.filter(visible).map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
-      +'</select></div></div>';
+      +'</select></div>'
+      +(newRepeat==='weekly'?'<div class="dowpick">'+DOW.map(function(d,i){
+          return '<button class="'+(newDays.indexOf(i)>=0?'on':'')+'" data-a="ev-dow" data-v="'+i+'">'+d+'</button>';
+        }).join('')+'</div><p class="hint">Не выбрано ни одного дня — повтор будет в тот же день недели, что и выбранная дата.</p>':'')
+      +'</div>';
   }else if(v==='wish'){
     if(YD.ready()&&!ydPricesP)ydPricesLoad().then(function(m){if(Object.keys(m).length&&route.view==='wish')renderMain();});
     var ws=(state.wishes||[]).slice().sort(function(a,b){
@@ -1136,6 +1209,27 @@ function renderMain(){
       +(YD.ready()?'<button class="btn ghost" data-a="wish-refresh">Обновить цены монитора</button>':'')
       +'<button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
       +'<p class="hint">Цены проверяет программа-монитор: в облаке по расписанию или на вашем компьютере. Файл со списком нужен, чтобы добавить товары в монитор, запущенный вручную.</p>';
+  }else if(v==='bd'){
+    var bds=(state.birthdays||[]).slice().sort(function(a,b){return bdWhen(a).days-bdWhen(b).days;});
+    h=title('🎂 Дни рождения',bds.length)
+      +'<div class="groupblock"><h3>Новый день рождения</h3><div class="addrow">'
+      +'<input type="text" id="bd-name" placeholder="Имя">'
+      +'<input type="date" id="bd-date" title="Дата рождения">'
+      +'<button class="btn ghost" data-a="add-bd">Добавить</button></div>'
+      +'<p class="hint">Год можно указать любой — если он настоящий, приложение посчитает, сколько исполнится.</p></div>';
+    if(bds.length){
+      h+='<div class="groupblock"><h3>Ближайшие</h3>'
+        +'<p class="hint" style="margin:0 0 6px">У записей из календаря год рождения обычно не настоящий — впишите его в дату, и приложение начнёт считать возраст.</p>';
+      bds.forEach(function(bd){
+        var w=bdWhen(bd);
+        h+='<div class="bd '+w.cls+'"><span class="ic">🎂</span>'
+          +'<input class="nm" value="'+esc(bd.name)+'" data-f="bd-name" data-id="'+bd.id+'" aria-label="Имя" style="background:transparent;border-color:transparent">'
+          +'<input type="date" value="'+esc(bd.date)+'" data-f="bd-date" data-id="'+bd.id+'" class="duein" title="Дата рождения">'
+          +'<span class="when">'+w.text+'</span>'
+          +'<button class="x" title="Удалить" data-a="del-bd" data-id="'+bd.id+'">✕</button></div>';
+      });
+      h+='</div>';
+    }else h+='<div class="empty">Пока пусто. Добавьте вручную или загрузите из календаря: ⚙ → «Добавить мероприятия из файла» (.ics).</div>';
   }else if(v==='plans'){
     h=title('🛒 Покупки и планы',null);
     var buy=[],imp=[];
@@ -1469,11 +1563,21 @@ function openSettings(){
       +'</ol></details>';
   }
 
-  h+='<h4>Резервная копия</h4>'
+  var d0=dueSummary();
+  h+='<h4>Напоминания на устройстве</h4>'
+    +'<p class="hint">Браузер покажет одно уведомление в день — про просроченные и сегодняшние задачи, мероприятия и дни рождения. Работает, когда вы открываете приложение.</p>'
+    +'<div class="btnrow">'
+    +(notifOn()&&notifSupported()&&Notification.permission==='granted'
+      ?'<button class="btn ghost" data-a="notif-off">Выключить напоминания</button><button class="btn ghost" data-a="notif-test">Показать сейчас</button>'
+      :'<button class="btn" data-a="notif-on">Включить напоминания</button>')
+    +'</div>'
+    +'<p class="hint">'+(d0.total?('Сейчас требует внимания: '+plural(d0.total,['дело','дела','дел'])+'.'):'Сейчас всё закрыто — напоминать не о чем.')+'</p>'
+    +'<h4>Резервная копия</h4>'
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
     +'<button class="btn ghost" data-a="import">Восстановить из файла</button>'
-    +'<button class="btn ghost" data-a="import-ev">Добавить мероприятия из файла</button></div>'
-    +'<p class="hint">Копия содержит все объекты, задачи и мероприятия (без фото). «Добавить мероприятия» дописывает события из файла к текущим, ничего не стирая; понимает файлы .ics — экспорт Google или Яндекс Календаря.</p>'
+    +'<button class="btn ghost" data-a="import-ev">Добавить мероприятия из файла</button>'
+    +'<button class="btn ghost" data-a="import-tasks">Добавить задачи из файла</button></div>'
+    +'<p class="hint">Копия содержит все объекты, задачи и мероприятия (без фото). «Добавить мероприятия» понимает .ics — экспорт Google или Яндекс Календаря (повторы и дни рождения тоже). «Добавить задачи» принимает Tasks.json из Google Takeout или обычный список строк; задачи лягут в выбранный объект.</p>'
     +'<div class="modal-foot"><button class="btn ghost" data-a="settings-close">Закрыть</button></div></div>';
   s.innerHTML=h;
 }
@@ -1607,15 +1711,97 @@ function parseIcs(text){
         time=pad2(d.getHours())+':'+pad2(d.getMinutes());
       }else{date=m[1]+'-'+m[2]+'-'+m[3];time=m[4]+':'+m[5];}
     }else date=m[1]+'-'+m[2]+'-'+m[3];
-    if(e.rrule&&/FREQ=YEARLY/i.test(e.rrule)){
-      var y=parseInt(today.slice(0,4),10),cand=y+date.slice(4);
-      if(cand<today)cand=(y+1)+date.slice(4);
-      date=cand;
+    var rr=e.rrule||'';
+    var rep='',days=null,until='',interval=1;
+    if(rr){
+      if(/FREQ=DAILY/i.test(rr))rep='daily';
+      else if(/FREQ=WEEKLY/i.test(rr))rep='weekly';
+      else if(/FREQ=MONTHLY/i.test(rr))rep='monthly';
+      else if(/FREQ=YEARLY/i.test(rr))rep='yearly';
+      var mu=/UNTIL=(\d{4})(\d{2})(\d{2})/i.exec(rr);
+      if(mu)until=mu[1]+'-'+mu[2]+'-'+mu[3];
+      var mi=/INTERVAL=(\d+)/i.exec(rr);
+      if(mi)interval=parseInt(mi[1],10)||1;
+      var mb=/BYDAY=([^;]+)/i.exec(rr);
+      if(mb){
+        var MAP={MO:0,TU:1,WE:2,TH:3,FR:4,SA:5,SU:6};
+        days=mb[1].split(',').map(function(x){return MAP[x.replace(/[^A-Z]/g,'').slice(-2)];})
+                  .filter(function(x){return x!=null;});
+      }
     }
-    if(date<today)return;
-    out.push({title:e.summary,date:date,time:time});
+    /* день рождения: ежегодное событие с именем в названии */
+    if(rep==='yearly'&&/(день рождения|birthday|с днем рождения|с днём рождения)/i.test(e.summary)){
+      var nm=e.summary.replace(/^.*?день рождения\s*/i,'').replace(/^birthday\s*(of)?\s*/i,'').trim();
+      out.push({kind:'birthday',title:nm||e.summary,date:date,noAge:true});
+      return;
+    }
+    if(!rep&&date<today)return;                 /* разовое прошедшее — пропускаем */
+    if(rep&&until&&until<today)return;           /* повтор уже закончился */
+    var ev={title:e.summary,date:date,time:time};
+    if(rep){ev.repeat=rep;if(days&&days.length)ev.days=days;if(until)ev.until=until;if(interval>1)ev.interval=interval;}
+    out.push(ev);
   });
   return out;
+}
+/* Google Takeout: {items:[{title, notes, due, status, tasks:[…]}]} либо простой список строк */
+function parseTasks(text){
+  var out=[];
+  function walk(list){
+    (list||[]).forEach(function(t){
+      if(!t)return;
+      var title=String(t.title||t.text||'').trim();
+      if(title){
+        out.push({
+          text:title+(t.notes?' — '+String(t.notes).replace(/\s+/g,' ').trim():''),
+          done:String(t.status||'')==='completed'||!!t.completed,
+          due:/^\d{4}-\d{2}-\d{2}/.test(String(t.due||''))?String(t.due).slice(0,10):''
+        });
+      }
+      if(t.tasks)walk(t.tasks);
+      if(t.items)walk(t.items);
+      if(t.children)walk(t.children);
+    });
+  }
+  var trimmed=String(text).trim();
+  if(trimmed.charAt(0)==='{'||trimmed.charAt(0)==='['){
+    var data=JSON.parse(trimmed);
+    if(Array.isArray(data))walk(data);
+    else walk(data.items||data.tasks||data.taskLists||[]);
+    return out;
+  }
+  trimmed.split(/\r?\n/).forEach(function(line){
+    var v=line.replace(/^[-*\u2022\[\]x\s]+/i,'').trim();
+    if(v)out.push({text:v,done:/^\s*[-*]?\s*\[x\]/i.test(line),due:''});
+  });
+  return out;
+}
+function doImportTasks(file){
+  var fr=new FileReader();
+  fr.onload=function(){
+    var list;
+    try{list=parseTasks(fr.result);}catch(e){toast('Не удалось разобрать файл задач');return;}
+    if(!list.length){toast('В файле не нашлось задач');return;}
+    var vis=state.items.filter(visible);
+    var names=vis.map(function(it,i){return (i+1)+') '+it.name;}).join('\n');
+    var pick=prompt('Найдено задач: '+list.length+'.\nВ какой объект их добавить? Введите номер:\n\n'+names,'1');
+    var idx=parseInt(pick,10);
+    if(!idx||idx<1||idx>vis.length)return;
+    var target=vis[idx-1];
+    target.tasks=target.tasks||[];
+    var have={};
+    target.tasks.forEach(function(t){have[t.text]=1;});
+    var added=0;
+    list.forEach(function(t){
+      if(have[t.text])return;
+      have[t.text]=1;
+      var e={id:uid(),text:t.text,done:!!t.done};
+      if(t.due)e.due=t.due;
+      target.tasks.push(e);added++;
+    });
+    touch();renderAll();closeSettings();
+    toast(added?('Добавлено задач: '+added+' → '+target.name):'Все задачи из файла уже есть');
+  };
+  fr.readAsText(file);
 }
 function doImportEvents(file){
   var fr=new FileReader();
@@ -1629,22 +1815,78 @@ function doImportEvents(file){
         arr=Array.isArray(data)?data:(data&&Array.isArray(data.events)?data.events:null);
       }
       if(!arr)throw new Error('bad');
-      var have={};
-      (state.events||[]).forEach(function(e){have[e.title+'|'+e.date]=1;});
-      var added=0;
+      var have={},haveBd={};
+      (state.events||[]).forEach(function(e){have[e.title+'|'+e.date+'|'+(e.repeat||'')]=1;});
+      (state.birthdays||[]).forEach(function(b){haveBd[b.name+'|'+monthDay(b.date)]=1;});
+      var added=0,addedBd=0;
       arr.forEach(function(e){
         if(!e||!e.title||!e.date)return;
-        var k=String(e.title)+'|'+String(e.date);
+        if(e.kind==='birthday'){
+          var bk=String(e.title)+'|'+monthDay(e.date);
+          if(haveBd[bk])return;
+          haveBd[bk]=1;
+          state.birthdays.push({id:uid(),name:String(e.title),date:String(e.date),noAge:true});
+          addedBd++;return;
+        }
+        var k=String(e.title)+'|'+String(e.date)+'|'+(e.repeat||'');
         if(have[k])return;
         have[k]=1;
-        state.events.push({id:uid(),title:String(e.title),date:String(e.date),time:e.time?String(e.time):'',itemId:''});
+        var ne2={id:uid(),title:String(e.title),date:String(e.date),time:e.time?String(e.time):'',itemId:'',repeat:e.repeat||''};
+        if(e.days)ne2.days=e.days;
+        if(e.until)ne2.until=e.until;
+        if(e.interval)ne2.interval=e.interval;
+        state.events.push(ne2);
         added++;
       });
       touch();renderAll();closeSettings();
-      toast(added?('Добавлено мероприятий: '+added):'Новых мероприятий в файле нет');
+      var msg=[];
+      if(added)msg.push('мероприятий: '+added);
+      if(addedBd)msg.push('дней рождения: '+addedBd);
+      toast(msg.length?('Добавлено — '+msg.join(', ')):'Новых записей в файле нет');
     }catch(e){toast('Файл не похож на список мероприятий');}
   };
   fr.readAsText(file);
+}
+
+/* ══════════ напоминания на устройстве ══════════ */
+var NOTIF_KEY='home-registry-notified';
+function notifOn(){try{return localStorage.getItem('home-registry-notif')==='1';}catch(e){return false;}}
+function notifSet(v){try{localStorage.setItem('home-registry-notif',v?'1':'0');}catch(e){}}
+function notifSupported(){return typeof Notification!=='undefined';}
+function askNotif(){
+  if(!notifSupported()){toast('Этот браузер не умеет показывать напоминания');return;}
+  Notification.requestPermission().then(function(p){
+    if(p==='granted'){notifSet(true);toast('Напоминания включены');checkReminders();}
+    else toast('Браузер не дал разрешение — включите уведомления для сайта в его настройках');
+    openSettings();
+  });
+}
+/* что напомнить: просроченные и сегодняшние задачи, мероприятия и дни рождения */
+function dueSummary(){
+  var today=todayStr(),tasks=[],evs=[],bds=[];
+  state.items.filter(visible).forEach(function(it){
+    (it.tasks||[]).forEach(function(t){
+      if(!t.done&&t.due&&t.due<=today)tasks.push(t.text+' — '+it.name);
+    });
+  });
+  eventsOn(today).forEach(function(ev){evs.push((ev.time?ev.time+' ':'')+ev.title);});
+  bdsOn(today).forEach(function(bd){bds.push(bd.name);});
+  return {tasks:tasks,events:evs,bds:bds,total:tasks.length+evs.length+bds.length};
+}
+function checkReminders(){
+  if(!notifOn()||!notifSupported()||Notification.permission!=='granted')return;
+  var today=todayStr();
+  try{if(localStorage.getItem(NOTIF_KEY)===today)return;}catch(e){}
+  var d=dueSummary();
+  if(!d.total)return;
+  var lines=[];
+  if(d.tasks.length)lines.push('Задачи: '+d.tasks.slice(0,3).join('; ')+(d.tasks.length>3?' и ещё '+(d.tasks.length-3):''));
+  if(d.events.length)lines.push('Сегодня: '+d.events.slice(0,3).join('; '));
+  if(d.bds.length)lines.push('День рождения: '+d.bds.join(', '));
+  try{
+    new Notification('Домашний реестр — '+plural(d.total,['дело','дела','дел'])+' на сегодня',{body:lines.join('\n'),tag:'home-registry-daily'});
+    localStorage.setItem(NOTIF_KEY,today);
+  }catch(e){}
 }
 
 /* ══════════ уведомления ══════════ */
@@ -2122,7 +2364,10 @@ function onClick(e){
     var ti=document.getElementById('ev-title'),tm=document.getElementById('ev-time'),si=document.getElementById('ev-item');
     var evt=ti.value.trim();
     if(!evt){ti.focus();return;}
-    state.events.push({id:uid(),title:evt,date:calSel,time:(tm&&tm.value)||'',itemId:(si&&si.value)||''});
+    var rp=document.getElementById('ev-repeat');
+    var ne={id:uid(),title:evt,date:calSel,time:(tm&&tm.value)||'',itemId:(si&&si.value)||'',repeat:(rp&&rp.value)||''};
+    if(ne.repeat==='weekly'&&newDays.length)ne.days=newDays.slice();
+    state.events.push(ne);
     refocus='ev-title';touch();renderNav();renderMain();
   }
   else if(a==='add-event-d'&&it){
@@ -2133,11 +2378,43 @@ function onClick(e){
     state.events.push({id:uid(),title:ttl,date:dd2.value,time:'',itemId:it.id});
     refocus='ev-title-d';touch();renderDetail();renderNav();
   }
+  else if(a==='ev-dow'){
+    var di=parseInt(b.dataset.v,10),pos=newDays.indexOf(di);
+    if(pos<0)newDays.push(di);else newDays.splice(pos,1);
+    var keepT=document.getElementById('ev-title'),kt=keepT?keepT.value:'';
+    renderMain();
+    var backT=document.getElementById('ev-title');
+    if(backT)backT.value=kt;
+  }
+  else if(a==='add-bd'){
+    var bn=document.getElementById('bd-name'),bdt=document.getElementById('bd-date');
+    var bname=bn?bn.value.trim():'';
+    if(!bname){if(bn)bn.focus();return;}
+    if(!bdt||!bdt.value){if(bdt)bdt.focus();toast('Укажите дату рождения');return;}
+    state.birthdays.push({id:uid(),name:bname,date:bdt.value});
+    refocus='bd-name';touch();renderNav();renderMain();
+  }
+  else if(a==='del-bd'){
+    state.birthdays=(state.birthdays||[]).filter(function(x){return x.id!==id;});
+    touch();renderNav();renderMain();
+  }
   else if(a==='del-event'){
     state.events=(state.events||[]).filter(function(x){return x.id!==b.dataset.sub;});
     touch();renderNav();renderMain();if(route.item)renderDetail();
   }
   else if(a==='import-ev'){document.getElementById('import-ev-input').click();}
+  else if(a==='notif-on'){askNotif();}
+  else if(a==='notif-off'){notifSet(false);openSettings();toast('Напоминания выключены');}
+  else if(a==='notif-test'){
+    try{localStorage.removeItem(NOTIF_KEY);}catch(e){}
+    var dd=dueSummary();
+    if(!dd.total){toast('Сегодня напоминать не о чем');return;}
+    checkReminders();
+  }
+  else if(a==='import-tasks'){
+    if(!state.items.filter(visible).length){toast('Сначала добавьте хотя бы один объект — задачам нужен владелец');return;}
+    document.getElementById('import-tasks-input').click();
+  }
   else if(a==='add-wish'){
     var wn=document.getElementById('wish-new'),wt=document.getElementById('wish-new-target');
     var wtitle=wn.value.trim();
@@ -2252,10 +2529,31 @@ function onChange(e){
     if(t.files&&t.files[0])doImportEvents(t.files[0]);
     t.value='';return;
   }
+  if(t.id==='ev-repeat'){
+    newRepeat=t.value;
+    var keepTitle=document.getElementById('ev-title'),kv2=keepTitle?keepTitle.value:'';
+    renderMain();
+    var back=document.getElementById('ev-title');
+    if(back)back.value=kv2;
+    return;
+  }
+  if(t.id==='import-tasks-input'){
+    if(t.files&&t.files[0])doImportTasks(t.files[0]);
+    t.value='';return;
+  }
   var f=t.dataset&&t.dataset.f;
   if(!f)return;
   if(f==='xopt'){exportOpts[t.dataset.k]=t.checked;openExport();return;}
   if(f.indexOf('set-')===0){settings()[f.slice(4)]=t.value;touch();return;}
+  if(f==='bd-name'||f==='bd-date'){
+    (state.birthdays||[]).forEach(function(bd){
+      if(bd.id!==t.dataset.id)return;
+      if(f==='bd-name')bd.name=t.value.trim()||'Без имени';
+      else{bd.date=t.value;bd.noAge=false;}
+    });
+    touch();renderNav();renderMain();
+    return;
+  }
   if(f.indexOf('wish-')===0){
     var w0=(state.wishes||[]).filter(function(w){return w.id===t.dataset.id;})[0];
     if(!w0)return;
@@ -2315,6 +2613,7 @@ function init(){
   if(!state.items)state.items=[];
   if(!state.events)state.events=[];
   if(!state.wishes)state.wishes=[];
+  if(!state.birthdays)state.birthdays=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
   document.addEventListener('click',onClick);
@@ -2327,9 +2626,12 @@ function init(){
     }
   });
   document.addEventListener('visibilitychange',function(){
-    if(!document.hidden&&provider()&&Date.now()-lastPull>30000)pull(true);
+    if(document.hidden)return;
+    if(provider()&&Date.now()-lastPull>30000)pull(true);
+    checkReminders();
   });
   renderAll();
+  setTimeout(checkReminders,1500);
   if(justLoggedIn){
     toast('Яндекс Диск подключён');
     setChip('pending');
