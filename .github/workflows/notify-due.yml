@@ -1,0 +1,32 @@
+name: Напоминания ко времени
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # каждые 15 минут
+  workflow_dispatch:
+
+concurrency:
+  group: notify-due
+  cancel-in-progress: false
+
+jobs:
+  due:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Установить зависимости
+        run: pip install requests cryptography
+      - name: Проверить, чему подошло время
+        working-directory: monitor
+        env:
+          YANDEX_TOKEN: ${{ secrets.YANDEX_TOKEN }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          OZON_TG_TOKEN: ${{ secrets.OZON_TG_TOKEN }}
+          OZON_TG_CHAT_ID: ${{ secrets.OZON_TG_CHAT_ID }}
+          APP_URL: ${{ vars.APP_URL }}
+          TZ_OFFSET: '3'
+        run: python notify_due.py
