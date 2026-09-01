@@ -1,0 +1,13 @@
+{
+  "name": "Домашний реестр",
+  "short_name": "Реестр",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F1F2ED",
+  "theme_color": "#33684E",
+  "lang": "ru",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

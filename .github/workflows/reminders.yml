@@ -1,4 +1,4 @@
-name: Напоминания в Telegram
+name: Напоминания
 
 on:
   schedule:
@@ -15,8 +15,18 @@ jobs:
         with:
           python-version: '3.12'
       - name: Установить зависимости
-        run: pip install requests
-      - name: Собрать и отправить напоминание
+        run: pip install requests cryptography
+      - name: Пуш-уведомления на телефон
+        working-directory: monitor
+        env:
+          YANDEX_TOKEN: ${{ secrets.YANDEX_TOKEN }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          APP_URL: ${{ vars.APP_URL }}
+          TZ_OFFSET: '3'
+        run: python push_send.py
+        continue-on-error: true
+
+      - name: Напоминание в Telegram
         working-directory: monitor
         env:
           YANDEX_TOKEN: ${{ secrets.YANDEX_TOKEN }}
@@ -24,3 +34,4 @@ jobs:
           OZON_TG_CHAT_ID: ${{ secrets.OZON_TG_CHAT_ID }}
           TZ_OFFSET: '3'
         run: python reminders.py
+        continue-on-error: true

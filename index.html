@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#33684E">
 <title>Домашний реестр</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗂️</text></svg>">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=PT+Serif:wght@700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style id="app-style">
@@ -2008,7 +2010,18 @@ function openSettings(){
   }
 
   var d0=dueSummary();
-  h+='<h4>Напоминания на устройстве</h4>'
+  h+='<h4>Уведомления на телефон</h4>'
+    +'<p class="hint">Приходят сами, даже если приложение закрыто: утром — что просрочено, что сегодня и завтра. Нужен подключённый Яндекс Диск и разрешение браузера. На телефоне сначала добавьте приложение на главный экран.</p>'
+    +'<div class="btnrow">'
+    +(pushState==='on'
+      ?'<button class="btn ghost" data-a="push-off">Выключить на этом устройстве</button>'
+      :'<button class="btn" data-a="push-on">Включить пуш-уведомления</button>')
+    +'</div>'
+    +'<p class="hint">'+(
+       pushState==='unsupported'?'Этот браузер не поддерживает пуши — попробуйте Chrome на Android.'
+       :pushState==='on'?'Включено на этом устройстве. Каждое устройство подключается отдельно.'
+       :'Пока выключено на этом устройстве.')+'</p>'
+    +'<h4>Напоминание при открытии</h4>'
     +'<p class="hint">Браузер покажет одно уведомление в день — про просроченные и сегодняшние задачи, мероприятия и дни рождения. Работает, когда вы открываете приложение.</p>'
     +'<div class="btnrow">'
     +(notifOn()&&notifSupported()&&Notification.permission==='granted'
@@ -2387,6 +2400,81 @@ function doImportEvents(file){
     }catch(e){toast('Файл не похож на список мероприятий');}
   };
   fr.readAsText(file);
+}
+
+/* ══════════ пуш-уведомления ══════════ */
+/* публичный ключ VAPID: пара к секрету VAPID_PRIVATE_KEY в GitHub Actions */
+var VAPID_PUBLIC='BHqnOQlQ4WUK6hG7ZreZx_vcC0MnwMnWo6rB7z8TkTNY41ahL8AsA5c4rXXggOJIMOD-IEAHz3gGKUA1WCAlquI';
+var PUSH_DIR='app:/push',pushState='';
+
+function pushSupported(){return 'serviceWorker' in navigator && 'PushManager' in window;}
+function deviceId(){
+  var k='home-registry-device';
+  try{
+    var v=localStorage.getItem(k);
+    if(!v){v=uid();localStorage.setItem(k,v);}
+    return v;
+  }catch(e){return 'device';}
+}
+function urlB64ToU8(base64){
+  var pad='='.repeat((4-base64.length%4)%4);
+  var raw=atob((base64+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  var out=new Uint8Array(raw.length);
+  for(var i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+  return out;
+}
+function swReady(){
+  if(!pushSupported())return Promise.reject(new Error('unsupported'));
+  return navigator.serviceWorker.register('sw.js').then(function(){return navigator.serviceWorker.ready;});
+}
+/* подписку кладём на Диск: приложение пишет, GitHub Actions читает и шлёт пуши */
+function savePushSub(sub){
+  if(!YD.ready())return Promise.reject(new Error('no-disk'));
+  var json=JSON.stringify(sub),CH=880,parts=[];
+  for(var i=0;i<json.length;i+=CH)parts.push(json.slice(i,i+CH));
+  var props={n:String(parts.length),t:todayStr()};
+  parts.forEach(function(d,i){props['d'+i]=d;});
+  return ydEnsureDir(PUSH_DIR).then(function(){
+    return ydChunkWrite(PUSH_DIR+'/'+deviceId(),props);
+  });
+}
+function dropPushSub(){
+  if(!YD.ready())return Promise.resolve();
+  return fetch(YD_API+'/resources?path='+encodeURIComponent(PUSH_DIR+'/'+deviceId())+'&permanently=true',
+    {method:'DELETE',headers:ydHeaders()}).catch(function(){});
+}
+function pushCheck(){
+  if(!pushSupported()){pushState='unsupported';return Promise.resolve(pushState);}
+  return swReady().then(function(reg){return reg.pushManager.getSubscription();})
+    .then(function(sub){pushState=sub?'on':'off';return pushState;})
+    .catch(function(){pushState='error';return pushState;});
+}
+function pushEnable(){
+  if(!pushSupported()){toast('Этот браузер не умеет пуш-уведомления');return;}
+  if(!YD.ready()){toast('Сначала подключите Яндекс Диск — через него уходят уведомления');return;}
+  toast('Спрашиваю разрешение…');
+  Notification.requestPermission().then(function(perm){
+    if(perm!=='granted'){toast('Браузер не дал разрешение на уведомления');return;}
+    return swReady().then(function(reg){
+      return reg.pushManager.getSubscription().then(function(existing){
+        return existing||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)});
+      });
+    }).then(function(sub){
+      return savePushSub(sub.toJSON?sub.toJSON():sub);
+    }).then(function(){
+      pushState='on';openSettings();
+      toast('Пуш-уведомления включены на этом устройстве');
+    });
+  }).catch(function(e){
+    toast('Не получилось включить: '+(e&&e.message==='no-disk'?'нет доступа к Диску':'браузер отказал'));
+  });
+}
+function pushDisable(){
+  swReady().then(function(reg){return reg.pushManager.getSubscription();})
+    .then(function(sub){return sub?sub.unsubscribe():null;})
+    .then(dropPushSub)
+    .then(function(){pushState='off';openSettings();toast('Пуш-уведомления выключены');})
+    .catch(function(){toast('Не вышло выключить');});
 }
 
 /* ══════════ напоминания на устройстве ══════════ */
@@ -2834,7 +2922,7 @@ function onClick(e){
   else if(a==='modal-close'){importLists=null;evImport=null;closeModal();}
   else if(a==='imp-run'){runImportTasks();}
   else if(a==='ev-run'){runImportEvents();}
-  else if(a==='settings'){openSettings();}
+  else if(a==='settings'){openSettings();pushCheck().then(function(){if(!document.getElementById('settings').hidden)openSettings();});}
   else if(a==='settings-close'){closeSettings();}
   else if(a==='pick-backend'){settingsBackend=b.dataset.v;openSettings();}
   else if(a==='gh-save'){verifyAndSaveGh();}
@@ -3115,6 +3203,8 @@ function onClick(e){
     toast('Мероприятие удалено','Вернуть');
   }
   else if(a==='import-ev'){document.getElementById('import-ev-input').click();}
+  else if(a==='push-on'){pushEnable();}
+  else if(a==='push-off'){pushDisable();}
   else if(a==='notif-on'){askNotif();}
   else if(a==='notif-off'){notifSet(false);openSettings();toast('Напоминания выключены');}
   else if(a==='notif-test'){
@@ -3454,6 +3544,7 @@ function init(){
   if(applyHash())renderAll();else renderAll();
   window.addEventListener('hashchange',function(){if(applyHash())renderAll();});
   setTimeout(checkReminders,1500);
+  if(pushSupported())navigator.serviceWorker.register('sw.js').catch(function(){});
   if(justLoggedIn){
     toast('Яндекс Диск подключён');
     setChip('pending');
