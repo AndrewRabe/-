@@ -1300,11 +1300,20 @@ function itemSelect(id,label){
     +list.map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
     +'</select>';
 }
+function insTitle(it,insId){
+  var found='';
+  (it.instructions||[]).forEach(function(ins){if(ins.id===insId)found=ins.title||'Инструкция';});
+  return found;
+}
 function rowHTML(itemId,kind,x,delBtn,dueEdit){
   var h='<div class="row'+(x.done?' done':'')+'">'
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
     +'<span class="t">'+esc(x.text)+'</span>';
+  if(kind==='tasks'&&x.insId){
+    var itX=find(itemId),nmX=itX?insTitle(itX,x.insId):'';
+    if(nmX)h+='<span class="rep" title="Из инструкции">📘 '+esc(nmX)+'</span>';
+  }
   if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
   if(kind==='tasks'&&dueEdit)h+='<input type="date" class="duein" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'" title="Срок задачи">';
   if(delBtn)h+='<button class="x" title="Удалить" data-a="del-sub" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">✕</button>';
@@ -1509,6 +1518,24 @@ function renderDetail(){
         +(rd?'<button data-a="instr-done" data-id="'+it.id+'" data-sub="'+ins.id+'" style="font-size:12.5px;color:var(--accent);font-weight:600">Сделано</button>':'')
         +'<button data-a="instr-task" data-id="'+it.id+'" data-sub="'+ins.id+'" style="font-size:12.5px;color:var(--accent);font-weight:600">В задачи</button>'
         +'</div>'
+        +(function(){
+          var mine=(it.tasks||[]).filter(function(t){return t.insId===ins.id;});
+          var out='';
+          if(mine.length){
+            mine.sort(function(a,b){if(!!a.done!==!!b.done)return a.done?1:-1;return (a.due||'~')<(b.due||'~')?-1:1;});
+            out+=mine.map(function(t){
+              return '<div class="row'+(t.done?' done':'')+'">'
+                +'<input type="checkbox" '+(t.done?'checked ':'')+'data-a="tgl" data-id="'+it.id+'" data-kind="tasks" data-sub="'+t.id+'">'
+                +'<span class="t">'+esc(t.text)+'</span>'
+                +(t.due?'<span class="due '+dueClass(t.due)+'">'+fmtDue(t.due)+'</span>':'')
+                +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+it.id+'" data-kind="tasks" data-sub="'+t.id+'">✕</button></div>';
+            }).join('');
+          }
+          out+='<div class="addrow"><input type="text" id="ins-task-'+ins.id+'" placeholder="Задача по этой инструкции…">'
+            +'<input type="date" id="ins-task-due-'+ins.id+'" title="Срок (необязательно)">'
+            +'<button class="btn ghost" data-a="ins-add-task" data-id="'+it.id+'" data-sub="'+ins.id+'">Добавить</button></div>';
+          return out;
+        })()
         +'<div class="tools"><button data-a="instr-edit" data-sub="'+ins.id+'">Изменить</button>'
         +'<button class="rm" data-a="del-sub" data-id="'+it.id+'" data-kind="instructions" data-sub="'+ins.id+'">Удалить</button></div></div>';
     }
@@ -1523,7 +1550,7 @@ function renderDetail(){
 
   d.innerHTML=h;
   hydratePhotos(d);
-  if(refocus){var f=document.getElementById(refocus);if(f)f.focus();refocus=null;}
+  if(refocus){var f=document.getElementById(refocus);if(f){f.focus();refocus=null;}}
 }
 function closeDetail(){route.item=null;confirmDel=false;editingInstr={};renderDetail();}
 
@@ -2292,7 +2319,11 @@ function onClick(e){
     touch();renderNav();renderMain();if(route.item)renderDetail();
   }
   else if(a==='del-sub'&&it){
-    it[b.dataset.kind]=(it[b.dataset.kind]||[]).filter(function(x){return x.id!==b.dataset.sub;});
+    var kind0=b.dataset.kind,sub0=b.dataset.sub;
+    it[kind0]=(it[kind0]||[]).filter(function(x){return x.id!==sub0;});
+    if(kind0==='instructions'){
+      (it.tasks||[]).forEach(function(t){if(t.insId===sub0)t.insId='';});
+    }
     touch();renderAll();
   }
   else if(a==='add-sub'&&it){
@@ -2562,11 +2593,22 @@ function onClick(e){
     });
     touch();renderDetail();renderNav();renderMain();
   }
+  else if(a==='ins-add-task'&&it){
+    var insId=b.dataset.sub;
+    var ti2=document.getElementById('ins-task-'+insId),td2=document.getElementById('ins-task-due-'+insId);
+    var txt2=ti2?ti2.value.trim():'';
+    if(!txt2){if(ti2)ti2.focus();return;}
+    var ent={id:uid(),text:txt2,done:false,insId:insId};
+    if(td2&&td2.value)ent.due=td2.value;
+    it.tasks=it.tasks||[];it.tasks.push(ent);
+    refocus='ins-task-'+insId;
+    touch();renderDetail();renderNav();renderMain();
+  }
   else if(a==='instr-task'&&it){
     (it.instructions||[]).forEach(function(ins){
       if(ins.id!==b.dataset.sub)return;
       it.tasks=it.tasks||[];
-      it.tasks.push({id:uid(),text:ins.title||'Инструкция',done:false,due:ins.due||todayStr()});
+      it.tasks.push({id:uid(),text:ins.title||'Инструкция',done:false,due:ins.due||todayStr(),insId:ins.id});
       toast('Добавлено в задачи: '+(ins.title||'инструкция'));
     });
     touch();renderDetail();renderNav();
