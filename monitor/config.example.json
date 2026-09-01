@@ -1,0 +1,27 @@
+{
+  "telegram": {
+    "bot_token": "123456789:AAExampleTokenFromBotFather",
+    "chat_id": "987654321"
+  },
+
+  "track_price": "card",
+  "check_interval_minutes": 60,
+  "delay_between_products": [5, 15],
+  "strategies": ["api", "html", "browser"],
+  "retries": 2,
+  "notify_on_first_check": true,
+  "notify_after_failures": 3,
+  "proxy": "",
+  "browser_headless": true,
+
+  "products": [
+    {
+      "url": "https://www.ozon.ru/product/naushniki-sony-wh-1000xm5-chernyy-961244530/",
+      "name": "Наушники Sony WH-1000XM5",
+      "target_price": 24990
+    },
+    {
+      "url": "https://www.ozon.ru/product/kofemashina-delonghi-magnifica-s-1160860396/"
+    }
+  ]
+}
