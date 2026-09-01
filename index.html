@@ -308,7 +308,9 @@ details.help ol{padding-left:18px;margin:8px 0}
 details.help li{margin-bottom:4px}
 .backendpick{margin-bottom:6px}
 
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;z-index:80;box-shadow:var(--shadow);max-width:90vw}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;z-index:80;box-shadow:var(--shadow);max-width:90vw;display:flex;align-items:center;gap:14px}
+#toast button{color:var(--bg);font-weight:700;text-decoration:underline;white-space:nowrap;font-size:13.5px}
+#toast button:hover{opacity:.8}
 
 @media (max-width:760px){
   .cal-list{display:none}
@@ -2211,12 +2213,39 @@ function checkReminders(){
 }
 
 /* ══════════ уведомления ══════════ */
-var toastTimer=null;
-function toast(msg){
+var toastTimer=null,undoSnap=null,undoTimer=null;
+function toast(msg,undoLabel){
   var t=document.getElementById('toast');
-  t.textContent=msg;t.hidden=false;
+  t.innerHTML='<span></span>';
+  t.firstChild.textContent=msg;
+  if(undoLabel&&undoSnap){
+    var b=document.createElement('button');
+    b.textContent=undoLabel;
+    b.setAttribute('data-a','undo');
+    t.appendChild(b);
+  }
+  t.hidden=false;
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(function(){t.hidden=true;},3500);
+  toastTimer=setTimeout(function(){t.hidden=true;},undoLabel?9000:3500);
+}
+/* снимок состояния перед действием — на случай «Отменить» */
+function markUndo(){
+  try{undoSnap=JSON.stringify(state);}catch(e){undoSnap=null;}
+  clearTimeout(undoTimer);
+  undoTimer=setTimeout(function(){undoSnap=null;},60000);
+}
+function doUndo(){
+  if(!undoSnap)return;
+  try{
+    var prev=JSON.parse(undoSnap);
+    prev.rev=(state.rev||0)+1;
+    state=prev;
+  }catch(e){return;}
+  undoSnap=null;
+  writeLocal();
+  state.rev=(state.rev||0);
+  touch();renderAll();
+  toast('Действие отменено');
 }
 
 /* ══════════ экспорт объявлений: архив, фиды, таблица ══════════ */
@@ -2576,6 +2605,7 @@ function onClick(e){
     touch();renderAll();
   }
   else if(a==='tgl'&&it){
+    markUndo();
     var moved='';
     (it[b.dataset.kind]||[]).forEach(function(x){
       if(x.id!==b.dataset.sub)return;
@@ -2587,16 +2617,19 @@ function onClick(e){
       }
       x.done=!x.done;
     });
-    if(moved)toast('Сделано. Следующий раз — '+fmtDue(moved));
+    if(moved)toast('Сделано. Следующий раз — '+fmtDue(moved),'Отменить');
+    else toast('Отметка изменена','Отменить');
     touch();renderNav();renderMain();if(route.item)renderDetail();
   }
   else if(a==='del-sub'&&it){
+    markUndo();
     var kind0=b.dataset.kind,sub0=b.dataset.sub;
     it[kind0]=(it[kind0]||[]).filter(function(x){return x.id!==sub0;});
     if(kind0==='instructions'){
       (it.tasks||[]).forEach(function(t){if(t.insId===sub0)t.insId='';});
     }
     touch();renderAll();
+    toast('Удалено','Вернуть');
   }
   else if(a==='add-sub'&&it){
     var map={tasks:'add-task',questions:'add-question',plans:'add-plan'};
@@ -2666,13 +2699,14 @@ function onClick(e){
     touch();renderDetail();
   }
   else if(a==='svc-done'&&it){
+    markUndo();
     var c1=carOf(it);
     c1.plan.forEach(function(sv){
       if(sv.id!==b.dataset.sub)return;
       sv.lastAt=todayStr();
       if(moneyNum(c1.odo))sv.lastKm=String(moneyNum(c1.odo));
       c1.log.push({id:uid(),date:todayStr(),odo:c1.odo||'',text:sv.name,cost:'',place:''});
-      toast('Отмечено и записано в журнал: '+sv.name);
+      toast('Отмечено и записано в журнал: '+sv.name,'Отменить');
     });
     touch();renderDetail();
   }
@@ -2743,6 +2777,7 @@ function onClick(e){
     else{calM+=parseInt(b.dataset.v,10);if(calM<0){calM=11;calY--;}if(calM>11){calM=0;calY++;}}
     renderMain();
   }
+  else if(a==='undo'){doUndo();}
   else if(a==='cal-day'){calSel=b.dataset.v;renderMain();}
   else if(a==='cal-jump'){
     e.stopPropagation();
@@ -2790,12 +2825,16 @@ function onClick(e){
     refocus='bd-name';touch();renderNav();renderMain();
   }
   else if(a==='del-bd'){
+    markUndo();
     state.birthdays=(state.birthdays||[]).filter(function(x){return x.id!==id;});
     touch();renderNav();renderMain();
+    toast('Удалено','Вернуть');
   }
   else if(a==='del-event'){
+    markUndo();
     state.events=(state.events||[]).filter(function(x){return x.id!==b.dataset.sub;});
     touch();renderNav();renderMain();if(route.item)renderDetail();
+    toast('Мероприятие удалено','Вернуть');
   }
   else if(a==='import-ev'){document.getElementById('import-ev-input').click();}
   else if(a==='notif-on'){askNotif();}
@@ -2818,8 +2857,10 @@ function onClick(e){
     refocus='wish-new';touch();renderNav();renderMain();
   }
   else if(a==='del-wish'){
+    markUndo();
     state.wishes=(state.wishes||[]).filter(function(w){return w.id!==id;});
     touch();renderNav();renderMain();
+    toast('Удалено','Вернуть');
   }
   else if(a==='wish-bought'){
     (state.wishes||[]).forEach(function(w){if(w.id===id)w.status=(w.status==='bought'?'active':'bought');});
@@ -2883,6 +2924,7 @@ function onClick(e){
   else if(a==='instr-edit'){editingInstr[b.dataset.sub]=true;renderDetail();}
   else if(a==='instr-edit-done'){delete editingInstr[b.dataset.sub];renderDetail();}
   else if(a==='instr-done'&&it){
+    markUndo();
     (it.instructions||[]).forEach(function(ins){
       if(ins.id!==b.dataset.sub||!ins.due)return;
       if(ins.repeat){
@@ -2899,10 +2941,10 @@ function onClick(e){
           else next=addMonths(next,12);
         }
         ins.due=next;
-        toast('Отмечено, следующее напоминание — '+fmtDue(next));
+        toast('Отмечено, следующее напоминание — '+fmtDue(next),'Отменить');
       }else{
         ins.due='';
-        toast('Напоминание снято');
+        toast('Напоминание снято','Вернуть');
       }
     });
     touch();renderDetail();renderNav();renderMain();
@@ -2952,8 +2994,10 @@ function onClick(e){
   else if(a==='del-ask'){confirmDel=true;renderDetail();}
   else if(a==='del-cancel'){confirmDel=false;renderDetail();}
   else if(a==='del-item'&&it){
+    markUndo();
     state.items=state.items.filter(function(x){return x.id!==id;});
     touch();closeDetail();renderNav();renderMain();
+    toast('Объект удалён','Вернуть');
   }
 }
 function onChange(e){
