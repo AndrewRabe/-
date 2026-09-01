@@ -941,6 +941,21 @@ function eventOn(ev,ds){
   if(r==='yearly')return monthDay(ds)===monthDay(ev.date);
   return false;
 }
+function nextDate(from,repeat){
+  if(!from||!repeat)return '';
+  var next='';
+  if(repeat==='daily'){var d=new Date(from);d.setDate(d.getDate()+1);next=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+  else if(repeat==='weekly'){var w=new Date(from);w.setDate(w.getDate()+7);next=w.getFullYear()+'-'+pad2(w.getMonth()+1)+'-'+pad2(w.getDate());}
+  else if(repeat==='monthly')next=addMonths(from,1);
+  else if(repeat==='yearly')next=addMonths(from,12);
+  return next;
+}
+/* пролистываем пропущенные периоды до ближайшей будущей даты */
+function nextFuture(from,repeat){
+  var next=nextDate(from,repeat),today=todayStr(),guard=0;
+  while(next&&next<today&&guard++<400)next=nextDate(next,repeat);
+  return next;
+}
 function instrRemindersOn(ds){
   var out=[];
   state.items.filter(visible).forEach(function(it){
@@ -1130,6 +1145,9 @@ function renderMain(){
       h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
         +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
         +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
+        +'<select id="sum-task-repeat" title="Повтор">'
+        +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
+        +'</select>'
         +itemSelect('sum-task-item','Объект')
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
         +'<p class="hint">Задача попадёт в карточку выбранного объекта, а со сроком — ещё и в календарь.</p></div>';
@@ -1314,8 +1332,14 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit){
     var itX=find(itemId),nmX=itX?insTitle(itX,x.insId):'';
     if(nmX)h+='<span class="rep" title="Из инструкции">📘 '+esc(nmX)+'</span>';
   }
+  if(kind==='tasks'&&x.repeat&&!dueEdit)h+='<span class="rep" title="Периодическая задача">🔁 '+REPEATS[x.repeat]+'</span>';
   if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
-  if(kind==='tasks'&&dueEdit)h+='<input type="date" class="duein" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'" title="Срок задачи">';
+  if(kind==='tasks'&&dueEdit){
+    h+='<input type="date" class="duein" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'" title="Срок задачи">'
+      +'<select class="duein" data-f="task-repeat" data-id="'+itemId+'" data-sub="'+x.id+'" title="Повтор">'
+      +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'"'+((x.repeat||'')===r?' selected':'')+'>'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
+      +'</select>';
+  }
   if(delBtn)h+='<button class="x" title="Удалить" data-a="del-sub" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">✕</button>';
   return h+'</div>';
 }
@@ -1469,8 +1493,11 @@ function renderDetail(){
     +(it.tasks||[]).map(function(t){return rowHTML(it.id,'tasks',t,true,true);}).join('')
     +'<div class="addrow"><input type="text" id="add-task" placeholder="Новая задача…">'
     +'<input type="date" id="add-task-due" title="Срок (необязательно)">'
+    +'<select id="add-task-repeat" title="Повтор">'
+    +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
+    +'</select>'
     +'<button class="btn ghost" data-a="add-sub" data-kind="tasks" data-id="'+it.id+'">Добавить</button></div>'
-    +'<p class="hint">Дата не обязательна; задачи со сроком появятся в календаре.</p></section>';
+    +'<p class="hint">Дата не обязательна; задачи со сроком появятся в календаре. Периодическая задача при отметке не закрывается, а переносится на следующий срок.</p></section>';
 
   h+='<section class="d-sec"><h3>Вопросы</h3>'
     +(it.questions||[]).map(function(t){return rowHTML(it.id,'questions',t,true);}).join('')
@@ -1533,6 +1560,9 @@ function renderDetail(){
           }
           out+='<div class="addrow"><input type="text" id="ins-task-'+ins.id+'" placeholder="Задача по этой инструкции…">'
             +'<input type="date" id="ins-task-due-'+ins.id+'" title="Срок (необязательно)">'
+            +'<select id="ins-task-rep-'+ins.id+'" title="Повтор">'
+            +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
+            +'</select>'
             +'<button class="btn ghost" data-a="ins-add-task" data-id="'+it.id+'" data-sub="'+ins.id+'">Добавить</button></div>';
           return out;
         })()
@@ -2315,7 +2345,18 @@ function onClick(e){
   }
   else if(a==='status'&&it){it.status=b.dataset.v;touch();renderAll();}
   else if(a==='tgl'&&it){
-    (it[b.dataset.kind]||[]).forEach(function(x){if(x.id===b.dataset.sub)x.done=!x.done;});
+    var moved='';
+    (it[b.dataset.kind]||[]).forEach(function(x){
+      if(x.id!==b.dataset.sub)return;
+      if(b.dataset.kind==='tasks'&&x.repeat&&!x.done){
+        var base=x.due||todayStr();
+        x.due=nextFuture(base,x.repeat);
+        moved=x.due;
+        return;                       /* периодическая задача не закрывается, а переезжает */
+      }
+      x.done=!x.done;
+    });
+    if(moved)toast('Сделано. Следующий раз — '+fmtDue(moved));
     touch();renderNav();renderMain();if(route.item)renderDetail();
   }
   else if(a==='del-sub'&&it){
@@ -2333,7 +2374,11 @@ function onClick(e){
     if(!text){if(inp)inp.focus();return;}
     var entry={id:uid(),text:text,done:false};
     if(b.dataset.kind==='plans')entry.kind=newPlanKind;
-    if(b.dataset.kind==='tasks'){var dd=document.getElementById('add-task-due');if(dd&&dd.value)entry.due=dd.value;}
+    if(b.dataset.kind==='tasks'){
+      var dd=document.getElementById('add-task-due');if(dd&&dd.value)entry.due=dd.value;
+      var rr2=document.getElementById('add-task-repeat');
+      if(rr2&&rr2.value){entry.repeat=rr2.value;if(!entry.due)entry.due=todayStr();}
+    }
     it[b.dataset.kind]=(it[b.dataset.kind]||[]);
     it[b.dataset.kind].push(entry);
     refocus=map[b.dataset.kind];
@@ -2415,6 +2460,8 @@ function onClick(e){
     if(!sit)return;
     var entry={id:uid(),text:stext,done:false};
     if(std&&std.value)entry.due=std.value;
+    var srp=document.getElementById('sum-task-repeat');
+    if(srp&&srp.value){entry.repeat=srp.value;if(!entry.due)entry.due=todayStr();}
     sit.tasks=sit.tasks||[];sit.tasks.push(entry);
     refocus='sum-task';touch();renderAll();
   }
@@ -2600,6 +2647,8 @@ function onClick(e){
     if(!txt2){if(ti2)ti2.focus();return;}
     var ent={id:uid(),text:txt2,done:false,insId:insId};
     if(td2&&td2.value)ent.due=td2.value;
+    var rp3=document.getElementById('ins-task-rep-'+insId);
+    if(rp3&&rp3.value){ent.repeat=rp3.value;if(!ent.due)ent.due=todayStr();}
     it.tasks=it.tasks||[];it.tasks.push(ent);
     refocus='ins-task-'+insId;
     touch();renderDetail();renderNav();renderMain();
@@ -2716,6 +2765,15 @@ function onChange(e){
   else if(f==='task-due'){
     (it.tasks||[]).forEach(function(x){if(x.id===t.dataset.sub)x.due=t.value||'';});
     renderNav();renderMain();
+  }
+  else if(f==='task-repeat'){
+    (it.tasks||[]).forEach(function(x){
+      if(x.id!==t.dataset.sub)return;
+      x.repeat=t.value;
+      if(x.repeat&&!x.due)x.due=todayStr();
+      if(x.repeat)x.done=false;
+    });
+    renderDetail();renderNav();renderMain();
   }
   else if(f==='pl-posted'){
     var pp=adPlatforms(it)[t.dataset.k];
