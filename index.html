@@ -183,6 +183,32 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .ad-warn{font-size:12.5px;color:var(--sale);margin:2px 0}
 .ad-warn.bad{color:var(--danger)}
 
+/* ── обслуживание машины ── */
+.odo{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.odo input{width:130px;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.svc{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:7px;background:var(--bg)}
+.svc.soon{border-color:var(--sale)}
+.svc.over{border-color:var(--danger)}
+.svc-top{display:flex;align-items:baseline;gap:8px}
+.svc-top .nm{font-weight:600;font-size:14px;flex:1;min-width:0}
+.svc-left{font-size:12.5px;font-weight:600;white-space:nowrap}
+.svc.soon .svc-left{color:var(--sale)}
+.svc.over .svc-left{color:var(--danger)}
+.svc-bar{height:5px;border-radius:3px;background:var(--surface2);margin:6px 0 5px;overflow:hidden}
+.svc-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.svc.soon .svc-bar i{background:var(--sale)}
+.svc.over .svc-bar i{background:var(--danger)}
+.svc-meta{font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.svc-meta button{font-size:12px;font-weight:600;color:var(--accent)}
+.svc-meta button.rm{color:var(--muted)}
+.log-row{display:flex;gap:8px;align-items:baseline;padding:7px 2px;border-top:1px solid var(--line);font-size:13.5px}
+.log-row:first-of-type{border-top:none}
+.log-date{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--muted);white-space:nowrap}
+.log-odo{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--muted);white-space:nowrap}
+.log-text{flex:1;min-width:0}
+.log-cost{font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.svc-sum{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+
 /* ── календарь ── */
 .cal-head{display:flex;align-items:center;gap:6px;margin:0 0 10px}
 .cal-head h2{margin:0;font-family:'PT Serif',Georgia,serif;font-size:20px;flex:1;text-transform:capitalize}
@@ -867,6 +893,61 @@ function delPhoto(it,photoId){
 }
 
 /* ══════════ данные ══════════ */
+var SVC_PRESETS=[
+  {name:'Масло и масляный фильтр',km:10000,months:12},
+  {name:'Воздушный фильтр',km:20000,months:24},
+  {name:'Салонный фильтр',km:15000,months:12},
+  {name:'Тормозные колодки (перед)',km:40000,months:0},
+  {name:'Тормозная жидкость',km:60000,months:24},
+  {name:'Антифриз',km:60000,months:48},
+  {name:'Свечи зажигания',km:30000,months:24},
+  {name:'Ремень или цепь ГРМ',km:90000,months:72},
+  {name:'ТО у сервиса',km:15000,months:12},
+  {name:'Смена шин по сезону',km:0,months:6},
+  {name:'ОСАГО',km:0,months:12},
+  {name:'Техосмотр',km:0,months:24}
+];
+function carOf(it){
+  var c=it.car||(it.car={odo:'',odoAt:'',plan:[],log:[]});
+  if(!c.plan)c.plan=[];
+  if(!c.log)c.log=[];
+  return c;
+}
+function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/86400000);}
+function addMonths(iso,m){
+  var d=new Date(iso);
+  if(isNaN(d))return '';
+  var day=d.getDate();
+  d.setMonth(d.getMonth()+m);
+  if(d.getDate()<day)d.setDate(0);
+  return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+}
+/* сколько осталось до работы: по километрам и по сроку, берём то, что ближе */
+function svcState(c,sv){
+  var odo=moneyNum(c.odo),today=todayStr();
+  var byKm=null,byDate=null,pct=0;
+  if(sv.km&&moneyNum(sv.lastKm)&&odo){
+    var used=odo-moneyNum(sv.lastKm);
+    byKm=sv.km-used;
+    pct=Math.max(0,Math.min(1,used/sv.km));
+  }
+  if(sv.months&&sv.lastAt){
+    var due=addMonths(sv.lastAt,sv.months);
+    byDate=daysBetween(today,due);
+    var span=daysBetween(sv.lastAt,due)||1;
+    pct=Math.max(pct,Math.max(0,Math.min(1,1-byDate/span)));
+  }
+  var cls='',left='';
+  if(byKm===null&&byDate===null)return {cls:'',left:'нет данных',pct:0,due:''};
+  var kmSoon=byKm!==null&&byKm<=Math.max(500,sv.km*0.1);
+  var daySoon=byDate!==null&&byDate<=30;
+  if((byKm!==null&&byKm<=0)||(byDate!==null&&byDate<0))cls='over';
+  else if(kmSoon||daySoon)cls='soon';
+  var bits=[];
+  if(byKm!==null)bits.push(byKm>0?('через '+byKm.toLocaleString('ru-RU')+' км'):('перепробег '+Math.abs(byKm).toLocaleString('ru-RU')+' км'));
+  if(byDate!==null)bits.push(byDate>0?('через '+plural(byDate,['день','дня','дней'])):(byDate===0?'сегодня':('просрочено на '+plural(Math.abs(byDate),['день','дня','дней']))));
+  return {cls:cls,left:bits.join(' · '),pct:pct,due:sv.months&&sv.lastAt?addMonths(sv.lastAt,sv.months):''};
+}
 function catOf(it){return CATS[it&&it.cat]?it.cat:'stuff';}
 function find(id){for(var i=0;i<state.items.length;i++)if(state.items[i].id===id)return state.items[i];return null;}
 function visible(it){return it.status!=='archive';}
@@ -1177,6 +1258,59 @@ function renderDetail(){
   h+='<button class="addphoto" data-a="add-photo" data-id="'+it.id+'" title="Добавить фото">+</button></div>';
   if(!provider())h+='<p class="hint">Фото сохраняются в облако — настройте синхронизацию через ⚙ вверху.</p>';
   h+='</section>';
+
+  if(catOf(it)==='car'){
+    var c=carOf(it),odo=moneyNum(c.odo);
+    h+='<section class="d-sec"><h3>Пробег</h3><div class="odo">'
+      +'<input type="text" inputmode="numeric" value="'+esc(c.odo||'')+'" data-f="car-odo" data-id="'+it.id+'" placeholder="185 000"> км'
+      +(c.odoAt?'<span class="wish-meta">обновлён '+fmtDue(c.odoAt)+'</span>':'<span class="wish-meta">впишите текущий пробег — от него считается регламент</span>')
+      +'</div></section>';
+
+    var plan=c.plan.slice().sort(function(a,b){
+      var sa=svcState(c,a),sb=svcState(c,b),ord={over:0,soon:1,'':2};
+      if(ord[sa.cls]!==ord[sb.cls])return ord[sa.cls]-ord[sb.cls];
+      return sb.pct-sa.pct;
+    });
+    h+='<section class="d-sec"><h3>Регламент обслуживания</h3>';
+    plan.forEach(function(sv){
+      var st=svcState(c,sv);
+      h+='<div class="svc '+st.cls+'"><div class="svc-top"><span class="nm">'+esc(sv.name)+'</span>'
+        +'<span class="svc-left">'+st.left+'</span></div>'
+        +'<div class="svc-bar"><i style="width:'+Math.round(st.pct*100)+'%"></i></div>'
+        +'<div class="svc-meta">'
+        +'<span>интервал: '+(sv.km?sv.km.toLocaleString('ru-RU')+' км':'')+(sv.km&&sv.months?' / ':'')+(sv.months?sv.months+' мес.':'')+'</span>'
+        +(moneyNum(sv.lastKm)||sv.lastAt?'<span>последний раз: '+(sv.lastAt?fmtDue(sv.lastAt):'')+(moneyNum(sv.lastKm)?' на '+moneyNum(sv.lastKm).toLocaleString('ru-RU')+' км':'')+'</span>':'<span>ещё не отмечали</span>')
+        +'<button data-a="svc-done" data-id="'+it.id+'" data-sub="'+sv.id+'">Сделано сегодня</button>'
+        +(st.cls?'<button data-a="svc-task" data-id="'+it.id+'" data-sub="'+sv.id+'">В задачи</button>':'')
+        +'<button class="rm" data-a="svc-del" data-id="'+it.id+'" data-sub="'+sv.id+'">Убрать</button>'
+        +'</div></div>';
+    });
+    if(!plan.length)h+='<p class="hint">Добавьте позиции регламента — приложение посчитает, когда подойдёт срок по пробегу и по времени.</p>';
+    h+='<div class="addrow"><select id="svc-preset" aria-label="Что добавить">'
+      +SVC_PRESETS.map(function(pr,i){return '<option value="'+i+'">'+esc(pr.name)+'</option>';}).join('')
+      +'<option value="custom">Своя позиция…</option></select>'
+      +'<button class="btn ghost" data-a="svc-add" data-id="'+it.id+'">Добавить</button></div></section>';
+
+    var log=c.log.slice().sort(function(a,b){return a.date<b.date?1:-1;});
+    var spent=0;log.forEach(function(r){spent+=moneyNum(r.cost);});
+    h+='<section class="d-sec"><h3>Журнал работ и расходов</h3>';
+    log.forEach(function(r){
+      h+='<div class="log-row"><span class="log-date">'+fmtDue(r.date)+'</span>'
+        +(moneyNum(r.odo)?'<span class="log-odo">'+moneyNum(r.odo).toLocaleString('ru-RU')+' км</span>':'')
+        +'<span class="log-text">'+esc(r.text)+(r.place?' <span class="wish-meta">· '+esc(r.place)+'</span>':'')+'</span>'
+        +(moneyNum(r.cost)?'<span class="log-cost">'+moneyNum(r.cost).toLocaleString('ru-RU')+' \u20BD</span>':'')
+        +'<button class="x" title="Удалить запись" data-a="log-del" data-id="'+it.id+'" data-sub="'+r.id+'">✕</button></div>';
+    });
+    if(!log.length)h+='<p class="hint">Записывайте, что делали: замены, ремонты, шиномонтаж — с пробегом и стоимостью.</p>';
+    h+='<div class="addrow"><input type="text" id="log-text" placeholder="Что сделали…">'
+      +'<input type="text" id="log-cost" inputmode="numeric" placeholder="₽" style="width:90px"></div>'
+      +'<div class="addrow"><input type="date" id="log-date" value="'+todayStr()+'">'
+      +'<input type="text" id="log-odo" inputmode="numeric" placeholder="пробег" style="width:110px">'
+      +'<input type="text" id="log-place" placeholder="где делали" style="flex:1;min-width:0">'
+      +'<button class="btn ghost" data-a="log-add" data-id="'+it.id+'">Записать</button></div>';
+    if(log.length)h+='<div class="svc-sum"><span>Записей: '+log.length+'</span><span>Потрачено: '+spent.toLocaleString('ru-RU')+' \u20BD</span></div>';
+    h+='</section>';
+  }
 
   h+='<section class="d-sec"><h3>Заметки</h3><textarea data-f="notes" data-id="'+it.id+'" placeholder="Что важно помнить об этом объекте…">'+esc(it.notes)+'</textarea></section>';
 
@@ -1891,6 +2025,65 @@ function onClick(e){
     refocus='add-spec';touch();renderDetail();
   }
   else if(a==='plan-kind'){newPlanKind=b.dataset.v;renderDetail();var i3=document.getElementById('add-plan');if(i3)i3.focus();}
+  else if(a==='svc-add'&&it){
+    var sel=document.getElementById('svc-preset'),v=sel?sel.value:'0';
+    var nm,km,mo;
+    if(v==='custom'){
+      nm=(prompt('Название позиции, например «Замена ремня генератора»')||'').trim();
+      if(!nm)return;
+      km=moneyNum(prompt('Интервал в километрах (можно оставить пустым)','')||'');
+      mo=moneyNum(prompt('Интервал в месяцах (можно оставить пустым)','')||'');
+      if(!km&&!mo){toast('Нужен интервал: километры или месяцы');return;}
+    }else{
+      var pr=SVC_PRESETS[parseInt(v,10)]||SVC_PRESETS[0];
+      nm=pr.name;km=pr.km;mo=pr.months;
+    }
+    var cc=carOf(it);
+    cc.plan.push({id:uid(),name:nm,km:km,months:mo,lastKm:'',lastAt:''});
+    touch();renderDetail();
+  }
+  else if(a==='svc-done'&&it){
+    var c1=carOf(it);
+    c1.plan.forEach(function(sv){
+      if(sv.id!==b.dataset.sub)return;
+      sv.lastAt=todayStr();
+      if(moneyNum(c1.odo))sv.lastKm=String(moneyNum(c1.odo));
+      c1.log.push({id:uid(),date:todayStr(),odo:c1.odo||'',text:sv.name,cost:'',place:''});
+      toast('Отмечено и записано в журнал: '+sv.name);
+    });
+    touch();renderDetail();
+  }
+  else if(a==='svc-task'&&it){
+    var c2=carOf(it);
+    c2.plan.forEach(function(sv){
+      if(sv.id!==b.dataset.sub)return;
+      var st=svcState(c2,sv);
+      it.tasks=it.tasks||[];
+      it.tasks.push({id:uid(),text:sv.name,done:false,due:st.due||todayStr()});
+      toast('Добавлено в задачи: '+sv.name);
+    });
+    touch();renderDetail();renderNav();
+  }
+  else if(a==='svc-del'&&it){
+    var c3=carOf(it);
+    c3.plan=c3.plan.filter(function(sv){return sv.id!==b.dataset.sub;});
+    touch();renderDetail();
+  }
+  else if(a==='log-add'&&it){
+    var lt=document.getElementById('log-text');
+    var text=lt?lt.value.trim():'';
+    if(!text){if(lt)lt.focus();return;}
+    var c4=carOf(it);
+    var ld=document.getElementById('log-date'),lo=document.getElementById('log-odo'),lc=document.getElementById('log-cost'),lp=document.getElementById('log-place');
+    c4.log.push({id:uid(),date:(ld&&ld.value)||todayStr(),odo:(lo&&lo.value)||'',text:text,cost:(lc&&lc.value)||'',place:(lp&&lp.value)||''});
+    if(lo&&moneyNum(lo.value)&&moneyNum(lo.value)>moneyNum(c4.odo)){c4.odo=String(moneyNum(lo.value));c4.odoAt=todayStr();}
+    refocus='log-text';touch();renderDetail();
+  }
+  else if(a==='log-del'&&it){
+    var c5=carOf(it);
+    c5.log=c5.log.filter(function(r){return r.id!==b.dataset.sub;});
+    touch();renderDetail();
+  }
   else if(a==='sum-add-task'){
     var sti=document.getElementById('sum-task'),std=document.getElementById('sum-task-due'),sto=document.getElementById('sum-task-item');
     var stext=sti?sti.value.trim():'';
@@ -2100,6 +2293,11 @@ function onChange(e){
     renderDetail();
   }
   else if(f==='pl-url'){adPlatforms(it)[t.dataset.k].url=t.value;}
+  else if(f==='car-odo'){
+    var cc2=carOf(it);
+    cc2.odo=t.value;cc2.odoAt=todayStr();
+    renderDetail();
+  }
   else if(f.indexOf('ad-')===0){
     var ad0=adOf(it),key=f.slice(3);
     if(t.type==='checkbox')ad0[key]=t.checked;else ad0[key]=t.value;
