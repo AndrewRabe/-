@@ -262,7 +262,7 @@ details.help li{margin-bottom:4px}
 <script id="app-code">
 (function(){
 'use strict';
-var CATS={home:{label:'Дом',icon:'🏠'},car:{label:'Машина',icon:'🚗'},tech:{label:'Техника',icon:'🔧'},stuff:{label:'Вещи',icon:'📦'}};
+var CATS={home:{label:'Жильё',icon:'🏠'},car:{label:'Машина',icon:'🚗'},tech:{label:'Техника',icon:'🔧'},cloth:{label:'Одежда',icon:'👕'},stuff:{label:'Вещи',icon:'📦'}};
 var MARKETS={ozon:'Ozon',wb:'Wildberries',ym:'Я.Маркет',avito:'Авито',other:'Другое'};
 var AD_CONDS=['новое','как новое','отличное','хорошее','удовлетворительное','на запчасти'];
 var AD_LIMITS={avito:{title:50,text:3000},youla:{title:50,text:5000}};
@@ -860,6 +860,7 @@ function delPhoto(it,photoId){
 }
 
 /* ══════════ данные ══════════ */
+function catOf(it){return CATS[it&&it.cat]?it.cat:'stuff';}
 function find(id){for(var i=0;i<state.items.length;i++)if(state.items[i].id===id)return state.items[i];return null;}
 function visible(it){return it.status!=='archive';}
 function matches(it){
@@ -913,8 +914,8 @@ function cardHTML(it){
   var ins=(it.instructions||[]).length;if(ins)meta.push(plural(ins,['инструкция','инструкции','инструкций']));
   var ph=(it.photos||[]).length;if(ph)meta.push('📷 '+ph);
   return '<article class="card" tabindex="0" role="button" data-a="open" data-id="'+it.id+'">'
-    +'<div class="card-top"><span class="card-ic">'+CATS[it.cat].icon+'</span>'
-    +'<div><h3>'+esc(it.name)+'</h3><span class="card-cat">'+CATS[it.cat].label+'</span></div>'+badge+'</div>'
+    +'<div class="card-top"><span class="card-ic">'+CATS[catOf(it)].icon+'</span>'
+    +'<div><h3>'+esc(it.name)+'</h3><span class="card-cat">'+CATS[catOf(it)].label+'</span></div>'+badge+'</div>'
     +(it.notes?'<p class="card-notes">'+esc(it.notes)+'</p>':'')
     +'<div class="card-meta">'+(meta.join(' · ')||'пока пусто')+'</div></article>';
 }
@@ -936,15 +937,29 @@ function renderMain(){
       +(v==='sale'&&list2.length?'<div class="btnrow" style="margin:-4px 0 14px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div>':'')
       +gridHTML(list2,v==='sale'?'Отметьте объект «На продажу» в его карточке — он появится здесь.':'Отправляйте сюда то, чем больше не пользуетесь: продали, выбросили, отдали.');
   }else if(v==='tasks'){
-    h=title('☑ Все задачи',null);var any=false;
+    var allOpen=0;
+    state.items.filter(visible).forEach(function(it){allOpen+=openCount(it.tasks);});
+    h=title('☑ Все задачи',allOpen);var any=false;
     state.items.filter(visible).forEach(function(it){
-      var open=(it.tasks||[]).filter(function(t){return !t.done;});
-      if(!open.length)return;any=true;
-      open.sort(function(a,b){return (a.due||'~')<(b.due||'~')?-1:1;});
-      h+='<div class="groupblock"><h3>'+CATS[it.cat].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button></h3>'
-        +open.map(function(t){return rowHTML(it.id,'tasks',t,true);}).join('')+'</div>';
+      var list=(it.tasks||[]).slice();
+      if(!list.length)return;any=true;
+      list.sort(function(a,b){
+        if(!!a.done!==!!b.done)return a.done?1:-1;
+        return (a.due||'~')<(b.due||'~')?-1:1;
+      });
+      var opened=openCount(it.tasks);
+      h+='<div class="groupblock"><h3>'+CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>'
+        +'<span class="wish-meta" style="margin-left:auto">'+(opened?opened+' открыто из '+list.length:'все '+list.length+' выполнены')+'</span></h3>'
+        +list.map(function(t){return rowHTML(it.id,'tasks',t,true);}).join('')+'</div>';
     });
-    if(!any)h+='<div class="empty">Открытых задач нет. Задачи добавляются в карточке объекта.</div>';
+    if(!any)h+='<div class="empty">Задач пока нет — добавьте первую ниже.</div>';
+    if(state.items.filter(visible).length)
+      h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
+        +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
+        +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
+        +itemSelect('sum-task-item','Объект')
+        +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
+        +'<p class="hint">Задача попадёт в карточку выбранного объекта, а со сроком — ещё и в календарь.</p></div>';
   }else if(v==='cal'){
     var tasksBy={},evBy={};
     state.items.filter(visible).forEach(function(it){
@@ -988,7 +1003,7 @@ function renderMain(){
     h+='<div class="addrow"><input type="text" id="ev-title" placeholder="Новое мероприятие в этот день…"><input type="time" id="ev-time">'
       +'<button class="btn ghost" data-a="add-event">Добавить</button></div>'
       +'<div class="addrow"><select id="ev-item" aria-label="Связать с объектом"><option value="">Без объекта</option>'
-      +state.items.filter(visible).map(function(it){return '<option value="'+it.id+'">'+CATS[it.cat].icon+' '+esc(it.name)+'</option>';}).join('')
+      +state.items.filter(visible).map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
       +'</select></div></div>';
   }else if(v==='wish'){
     if(YD.ready()&&!ydPricesP)ydPricesLoad().then(function(m){if(Object.keys(m).length&&route.view==='wish')renderMain();});
@@ -1043,13 +1058,31 @@ function renderMain(){
       if(!arr.length)return '';
       return '<div class="groupblock"><h3>'+name+'</h3>'+arr.map(function(e){
         return '<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">'
-          +'<span class="t">'+esc(e.p.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span></div>';
+          +'<span class="t">'+esc(e.p.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
+          +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">✕</button></div>';
       }).join('')+'</div>';
     }
     var bl=block('Докупить',buy)+block('Улучшить и сделать',imp);
-    h+=bl||'<div class="empty">Списки пусты. Планы и покупки добавляются в карточке объекта — раздел «Планы и покупки».</div>';
+    h+=bl||'<div class="empty">Списки пусты — добавьте первую строку ниже.</div>';
+    if(state.items.filter(visible).length)
+      h+='<div class="groupblock"><h3>Новая строка</h3><div class="addrow">'
+        +'<input type="text" id="sum-plan" placeholder="Что докупить или улучшить…">'
+        +itemSelect('sum-plan-item','Объект')
+        +'<button class="btn ghost" data-a="sum-add-plan">Добавить</button></div>'
+        +'<div class="kindpick" style="margin-top:8px">'
+        +'<button class="'+(newPlanKind==='buy'?'on':'')+'" data-a="sum-plan-kind" data-v="buy">докупить</button>'
+        +'<button class="'+(newPlanKind==='improve'?'on':'')+'" data-a="sum-plan-kind" data-v="improve">улучшить</button>'
+        +'</div><p class="hint">Строка попадёт в карточку выбранного объекта — списки везде общие.</p></div>';
   }
   m.innerHTML=h;
+  if(refocus){var rf=document.getElementById(refocus);if(rf){rf.focus();refocus=null;}}
+}
+function itemSelect(id,label){
+  var list=state.items.filter(visible);
+  if(!list.length)return '';
+  return '<select id="'+id+'" aria-label="'+label+'">'
+    +list.map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
+    +'</select>';
 }
 function rowHTML(itemId,kind,x,delBtn,dueEdit){
   var h='<div class="row'+(x.done?' done':'')+'">'
@@ -1068,7 +1101,7 @@ function renderDetail(){
   var it=route.item?find(route.item):null;
   if(!it){d.hidden=true;s.hidden=true;return;}
   d.hidden=false;s.hidden=false;
-  var h='<div class="d-head"><span class="ic">'+CATS[it.cat].icon+'</span>'
+  var h='<div class="d-head"><span class="ic">'+CATS[catOf(it)].icon+'</span>'
     +'<input id="d-name" value="'+esc(it.name)+'" data-f="name" data-id="'+it.id+'" aria-label="Название">'
     +'<button class="d-close" data-a="close" title="Закрыть">✕</button></div>';
 
@@ -1595,7 +1628,7 @@ function buildHtmlPage(items){
         +'<pre id="d'+idx+pk+'">'+esc(txt)+'</pre></div>';
     }).join('');
     return '<section class="card"><h2>'+pad2(idx+1)+'. '+esc(it.name)+'</h2>'
-      +'<div class="meta">'+esc(CATS[it.cat].label)+' · '+esc(adOf(it).cond||'')+' · <b>'+(rub(it.price)||'цена не указана')+'</b></div>'
+      +'<div class="meta">'+esc(CATS[catOf(it)].label)+' · '+esc(adOf(it).cond||'')+' · <b>'+(rub(it.price)||'цена не указана')+'</b></div>'
       +'<div class="thumbs">'+(thumbs||'<span class="none">фото нет</span>')+'</div>'
       +'<div class="pfs">'+blocks+'</div></section>';
   }).join('');
@@ -1624,7 +1657,7 @@ function buildCsv(items){
   var rows=[head.map(csvCell).join(';')];
   items.forEach(function(it,i){
     var pl=adPlatforms(it),ad=adOf(it);
-    rows.push([i+1,it.name,CATS[it.cat].label,ad.cond||'',moneyNum(it.price)||'',ad.bargain?'да':'',
+    rows.push([i+1,it.name,CATS[catOf(it)].label,ad.cond||'',moneyNum(it.price)||'',ad.bargain?'да':'',
       (it.photos||[]).length,
       pl.avito.posted?'выложено':'',pl.avito.date||'',pl.avito.url||'',
       pl.youla.posted?'выложено':'',pl.youla.date||'',pl.youla.url||'',
@@ -1648,7 +1681,7 @@ function buildAvitoXml(items){
   items.forEach(function(it,idx){
     var ad=adOf(it),cond=/^нов/i.test(ad.cond||'')?'Новое':'Б/у';
     s+='  <Ad>\n    <Id>'+xmlEsc(it.id)+'</Id>\n    <AdStatus>Free</AdStatus>\n';
-    s+='    <Category>'+xmlEsc(CATS[it.cat].label)+'</Category>\n';
+    s+='    <Category>'+xmlEsc(CATS[catOf(it)].label)+'</Category>\n';
     s+='    <Title>'+xmlEsc(adTitle(it))+'</Title>\n';
     s+='    <Description>'+cdata(adText(it).replace(/\n/g,'<br/>'))+'</Description>\n';
     s+='    <Price>'+(moneyNum(it.price)||0)+'</Price>\n';
@@ -1671,7 +1704,7 @@ function buildYoulaYml(items){
   var st=settings(),d=new Date();
   var stamp=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes());
   var cats=[];
-  items.forEach(function(it){var c=CATS[it.cat].label;if(cats.indexOf(c)===-1)cats.push(c);});
+  items.forEach(function(it){var c=CATS[catOf(it)].label;if(cats.indexOf(c)===-1)cats.push(c);});
   var s='<?xml version="1.0" encoding="UTF-8"?>\n<yml_catalog date="'+stamp+'">\n  <shop>\n';
   s+='    <name>'+xmlEsc(st.manager||'Личные вещи')+'</name>\n';
   s+='    <company>'+xmlEsc(st.manager||'Частное лицо')+'</company>\n';
@@ -1685,7 +1718,7 @@ function buildYoulaYml(items){
     s+='        <name>'+xmlEsc(adTitle(it))+'</name>\n';
     s+='        <price>'+(moneyNum(it.price)||0)+'</price>\n';
     s+='        <currencyId>RUR</currencyId>\n';
-    s+='        <categoryId>'+(cats.indexOf(CATS[it.cat].label)+1)+'</categoryId>\n';
+    s+='        <categoryId>'+(cats.indexOf(CATS[catOf(it)].label)+1)+'</categoryId>\n';
     photoUrlsFor(it,itemFolder(it,idx)).forEach(function(u){s+='        <picture>'+xmlEsc(u)+'</picture>\n';});
     s+='        <description>'+cdata(adText(it))+'</description>\n';
     if(st.address)s+='        <param name="Адрес">'+xmlEsc(st.address)+'</param>\n';
@@ -1849,6 +1882,34 @@ function onClick(e){
     refocus='add-spec';touch();renderDetail();
   }
   else if(a==='plan-kind'){newPlanKind=b.dataset.v;renderDetail();var i3=document.getElementById('add-plan');if(i3)i3.focus();}
+  else if(a==='sum-add-task'){
+    var sti=document.getElementById('sum-task'),std=document.getElementById('sum-task-due'),sto=document.getElementById('sum-task-item');
+    var stext=sti?sti.value.trim():'';
+    if(!stext){if(sti)sti.focus();return;}
+    var sit=find(sto&&sto.value);
+    if(!sit)return;
+    var entry={id:uid(),text:stext,done:false};
+    if(std&&std.value)entry.due=std.value;
+    sit.tasks=sit.tasks||[];sit.tasks.push(entry);
+    refocus='sum-task';touch();renderAll();
+  }
+  else if(a==='sum-add-plan'){
+    var spi=document.getElementById('sum-plan'),spo=document.getElementById('sum-plan-item');
+    var ptext=spi?spi.value.trim():'';
+    if(!ptext){if(spi)spi.focus();return;}
+    var pit=find(spo&&spo.value);
+    if(!pit)return;
+    pit.plans=pit.plans||[];
+    pit.plans.push({id:uid(),text:ptext,done:false,kind:newPlanKind});
+    refocus='sum-plan';touch();renderAll();
+  }
+  else if(a==='sum-plan-kind'){
+    newPlanKind=b.dataset.v;
+    var keep=document.getElementById('sum-plan'),kv=keep?keep.value:'';
+    renderMain();
+    var again=document.getElementById('sum-plan');
+    if(again){again.value=kv;again.focus();}
+  }
   else if(a==='cal-nav'){
     if(b.dataset.v==='0'){var n0=new Date();calY=n0.getFullYear();calM=n0.getMonth();calSel=todayStr();}
     else{calM+=parseInt(b.dataset.v,10);if(calM<0){calM=11;calY--;}if(calM>11){calM=0;calY++;}}
