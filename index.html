@@ -241,13 +241,24 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .cal-head button:hover{background:var(--accent-soft);color:var(--accent)}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px}
 .cal-dow{font-size:10.5px;color:var(--muted);text-align:center;padding:2px 0;text-transform:uppercase;letter-spacing:.06em}
-.cal-cell{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-height:52px;padding:4px 5px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.cal-cell{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-height:112px;padding:4px 5px;cursor:pointer;display:flex;flex-direction:column;gap:2px;overflow:hidden}
 .cal-cell:hover{border-color:var(--accent)}
 .cal-cell.dim{opacity:.4}
 .cal-cell.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .cal-n{font-size:12px;line-height:1;align-self:flex-start;padding:2px 4px;border-radius:5px}
 .cal-cell.today .cal-n{background:var(--accent-soft);color:var(--accent);font-weight:700}
 .cal-dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:auto}
+.cal-list{display:flex;flex-direction:column;gap:2px;width:100%;margin-top:2px}
+.chip{display:flex;align-items:baseline;gap:4px;font-size:11px;line-height:1.35;padding:1px 5px;border-radius:5px;border-left:3px solid var(--muted);background:var(--surface2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .tm{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--muted);flex:none}
+.chip .tx{overflow:hidden;text-overflow:ellipsis}
+.chip.t{border-left-color:var(--sale);background:var(--sale-soft)}
+.chip.e{border-left-color:var(--accent);background:var(--accent-soft)}
+.chip.r{border-left-color:#7B6CD9}
+.chip.b{border-left-color:var(--sale)}
+.chip.i{border-left-color:#3E8E9E}
+.chip.done .tx{text-decoration:line-through;opacity:.6}
+.cal-more{font-size:10.5px;color:var(--muted);padding-left:3px}
 .cal-dot{width:7px;height:7px;border-radius:50%}
 .cal-dot.t{background:var(--sale)}
 .cal-dot.e{background:var(--accent)}
@@ -280,6 +291,14 @@ details.help li{margin-bottom:4px}
 
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13.5px;z-index:80;box-shadow:var(--shadow);max-width:90vw}
 
+@media (max-width:760px){
+  .cal-list{display:none}
+  .cal-cell{min-height:56px}
+  .cal-grid{gap:3px}
+}
+@media (min-width:761px){
+  .cal-dots{display:none}
+}
 @media (max-width:900px){
   .shell{grid-template-columns:1fr}
   nav#nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;overflow-x:auto}
@@ -1189,11 +1208,31 @@ function renderMain(){
       var ds=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
       var cls='cal-cell'+(d.getMonth()!==calM?' dim':'')+(ds===today?' today':'')+(ds===calSel?' sel':'');
       var dayEv=eventsOn(ds),dayBd=bdsOn(ds),dayIn=instrRemindersOn(ds),dots='',k;
+      var chips=[],timed=[],untimed=[];
+      dayEv.forEach(function(ev){
+        (ev.time?timed:untimed).push({cls:ev.repeat?'r':'e',time:ev.time||'',text:ev.title});
+      });
+      timed.sort(function(a,b){return a.time<b.time?-1:1;});
+      chips=chips.concat(timed);
+      dayBd.forEach(function(bd){chips.push({cls:'b',time:'',text:'🎂 '+bd.name});});
+      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:'',text:e.t.text});});
+      dayIn.forEach(function(e){chips.push({cls:'i',time:'',text:'📘 '+(e.ins.title||'инструкция')});});
+      chips=chips.concat(untimed);
       for(k=0;k<Math.min((tasksBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot t"></span>';
       for(k=0;k<Math.min(dayEv.length,3);k++)dots+='<span class="cal-dot '+(dayEv[k].repeat?'r':'e')+'"></span>';
       for(k=0;k<Math.min(dayBd.length,2);k++)dots+='<span class="cal-dot b"></span>';
       for(k=0;k<Math.min(dayIn.length,2);k++)dots+='<span class="cal-dot i"></span>';
-      h+='<div class="'+cls+'" data-a="cal-day" data-v="'+ds+'" role="button" tabindex="0"><span class="cal-n">'+d.getDate()+'</span><span class="cal-dots">'+dots+'</span></div>';
+      var LIM=4,list='';
+      chips.slice(0,LIM).forEach(function(c){
+        list+='<span class="chip '+c.cls+'" title="'+esc(c.text)+'">'
+          +(c.time?'<span class="tm">'+esc(c.time)+'</span>':'')
+          +'<span class="tx">'+esc(c.text)+'</span></span>';
+      });
+      if(chips.length>LIM)list+='<span class="cal-more">+ ещё '+(chips.length-LIM)+'</span>';
+      h+='<div class="'+cls+'" data-a="cal-day" data-v="'+ds+'" role="button" tabindex="0">'
+        +'<span class="cal-n">'+d.getDate()+'</span>'
+        +'<span class="cal-list">'+list+'</span>'
+        +'<span class="cal-dots">'+dots+'</span></div>';
     }
     h+='</div><div class="cal-legend"><span><span class="cal-dot t"></span>задачи</span><span><span class="cal-dot e"></span>мероприятия</span>'
       +'<span><span class="cal-dot r"></span>повторяющиеся</span><span><span class="cal-dot b"></span>дни рождения</span>'
