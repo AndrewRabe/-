@@ -843,6 +843,13 @@ function errChip(e){
   var p=(e&&e.backend==='yd')?YD:GH;
   setChip('err',p.errText(e));
 }
+/* чья версия главнее: сначала по времени правки, затем по номеру */
+function remoteWins(remote){
+  if(!remote)return false;
+  var rt=remote.updatedAt||0,lt=state.updatedAt||0;
+  if(rt&&lt&&rt!==lt)return rt>lt;
+  return (remote.rev||0)>(state.rev||0);
+}
 function adoptRemote(remote){
   state=remote;
   if(!state.items)state.items=[];
@@ -858,7 +865,7 @@ function pull(quiet){
   if(!p){setChip('local');return Promise.resolve();}
   lastPull=Date.now();
   return p.getState().then(function(got){
-    if(got&&(got.data.rev||0)>(state.rev||0)){
+    if(got&&remoteWins(got.data)){
       adoptRemote(got.data);
       if(!quiet)toast('Данные обновлены из хранилища');
     }
@@ -879,12 +886,13 @@ function push(attempt){
   if(syncing){clearTimeout(saveTimer);saveTimer=setTimeout(push,1000);return;}
   syncing=true;
   p.getState().then(function(got){
-    if(got&&(got.data.rev||0)>(state.rev||0)){
+    if(got&&remoteWins(got.data)){
       adoptRemote(got.data);
       toast('На другом устройстве версия новее — загрузил её');
       setChip('saved');return;
     }
-    if(got&&(got.data.rev||0)===(state.rev||0)){setChip('saved');return;} /* уже совпадает */
+    if(got&&(got.data.rev||0)===(state.rev||0)&&(got.data.updatedAt||0)===(state.updatedAt||0)){setChip('saved');return;}
+    if(got&&(got.data.rev||0)>=(state.rev||0))state.rev=(got.data.rev||0)+1;   /* наши правки свежее */
     return p.putState(JSON.stringify(state),got?got.tag:null)
       .then(function(){setChip('saved');});
   }).catch(function(e){
@@ -1587,6 +1595,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit){
   }
   if(kind==='tasks'&&x.time&&!dueEdit)h+='<span class="ev-time">'+esc(x.time)+'</span>';
   if(kind==='tasks'&&x.repeat&&!dueEdit)h+='<span class="rep" title="Периодическая задача">🔁 '+REPEATS[x.repeat]+'</span>';
+  if(kind==='tasks'&&x.due&&dueEdit)h+='<button class="x" title="В календарь телефона" data-a="task-ics" data-id="'+itemId+'" data-sub="'+x.id+'">📅</button>';
   if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
   if(kind==='tasks'&&dueEdit){
     h+='<input type="date" class="duein" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'" title="Срок задачи">'
@@ -2032,6 +2041,10 @@ function openSettings(){
       .map(function(o){return '<option value="'+o[0]+'"'+(String(settings().leadMin||'0')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')
     +'</select>'
     +'<p class="hint">Задачи и мероприятия со временем присылают отдельное уведомление к сроку — проверка идёт каждые 15 минут, поэтому возможна задержка в несколько минут.</p>'
+    +'<h4>Календарь телефона</h4>'
+    +'<p class="hint">Самый надёжный способ получить напоминание секунда в секунду: выгрузить задачи и мероприятия в календарь телефона — там напоминания срабатывают локально, без интернета и без задержек.</p>'
+    +'<div class="btnrow"><button class="btn ghost" data-a="ics-all">Скачать файл для календаря (.ics)</button></div>'
+    +'<p class="hint">Откройте файл на телефоне — календарь (Google, Яндекс, штатный) предложит добавить записи вместе с напоминаниями. Отдельную задачу можно выгрузить кнопкой 📅 в её строке.</p>'
     +'<h4>Напоминание при открытии</h4>'
     +'<p class="hint">Браузер покажет одно уведомление в день — про просроченные и сегодняшние задачи, мероприятия и дни рождения. Работает, когда вы открываете приложение.</p>'
     +'<div class="btnrow">'
@@ -2040,6 +2053,13 @@ function openSettings(){
       :'<button class="btn" data-a="notif-on">Включить напоминания</button>')
     +'</div>'
     +'<p class="hint">'+(d0.total?('Сейчас требует внимания: '+plural(d0.total,['дело','дела','дел'])+'.'):'Сейчас всё закрыто — напоминать не о чем.')+'</p>'
+    +(function(){
+      var cnt={items:state.items.length,tasks:0,events:(state.events||[]).length,bd:(state.birthdays||[]).length,places:placesAll().length};
+      state.items.forEach(function(it){cnt.tasks+=(it.tasks||[]).length;});
+      return '<h4>Что сейчас в реестре</h4>'
+        +'<p class="hint">Объектов: '+cnt.items+' · задач: '+cnt.tasks+' · мероприятий: '+cnt.events
+        +' · дней рождения: '+cnt.bd+' · мест хранения: '+cnt.places+'. Версия данных: '+(state.rev||0)+'.</p>';
+    })()
     +'<h4>Резервная копия</h4>'
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
     +'<button class="btn ghost" data-a="import">Восстановить из файла</button>'
@@ -2276,6 +2296,11 @@ function doImportTasks(file){
   fr.onload=function(){
     try{importLists=parseTaskLists(fr.result);}catch(e){toast('Не удалось разобрать файл задач');return;}
     if(!importLists||!importLists.length){toast('В файле не нашлось задач');return;}
+    var vis0=state.items.filter(visible);
+    importLists.forEach(function(L){
+      L.pick=L.tasks.some(function(t){return !t.done;});   /* списки с открытыми задачами отмечаем сразу */
+      if(!L.target&&vis0.length)L.target=vis0[0].id;
+    });
     closeSettings();openImportTasks();
   };
   fr.readAsText(file);
@@ -2324,8 +2349,11 @@ function runImportTasks(){
     });
   });
   importLists=null;closeModal();
+  if(added){route.view='tasks';route.item=null;}
   touch();renderAll();
-  toast(added?('Перенесено задач: '+added+' из '+plural(lists,['списка','списков','списков'])):'Новых задач не нашлось');
+  if(added)toast('Перенесено задач: '+added+' из '+plural(lists,['списка','списков','списков']));
+  else if(!lists)toast('Ни один список не отмечен — отметьте галочками, что переносить');
+  else toast('В выбранных списках нет незакрытых задач — включите «переносить выполненные»');
 }
 var evImport=null,evOpts={future:true,repeat:true,past:false,bd:true,pastYears:1};
 function openImportEvents(){
@@ -2411,6 +2439,112 @@ function doImportEvents(file){
     }catch(e){toast('Файл не похож на список мероприятий');}
   };
   fr.readAsText(file);
+}
+
+/* ══════════ выгрузка в календарь телефона ══════════ */
+function icsEsc(v){return String(v==null?'':v).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
+function icsFold(line){
+  /* строки длиннее 75 октетов складываются по стандарту */
+  var out='',cur='';
+  for(var i=0;i<line.length;i++){
+    cur+=line[i];
+    if(encodeURIComponent(cur).replace(/%../g,'x').length>=73){out+=cur+'\r\n ';cur='';}
+  }
+  return out+cur;
+}
+function icsStamp(d){
+  return d.getUTCFullYear()+pad2(d.getUTCMonth()+1)+pad2(d.getUTCDate())+'T'
+    +pad2(d.getUTCHours())+pad2(d.getUTCMinutes())+pad2(d.getUTCSeconds())+'Z';
+}
+function icsLocal(date,time){
+  var d=String(date).replace(/-/g,'');
+  return time?d+'T'+String(time).replace(':','')+'00':d;
+}
+function icsPlusHour(date,time){
+  var p=String(time).split(':'),h=parseInt(p[0],10),m=parseInt(p[1],10);
+  var dt=new Date(date+'T00:00:00');
+  dt.setHours(h+1,m,0,0);
+  return icsLocal(dt.getFullYear()+'-'+pad2(dt.getMonth()+1)+'-'+pad2(dt.getDate()),pad2(dt.getHours())+':'+pad2(dt.getMinutes()));
+}
+var ICS_DOW=['MO','TU','WE','TH','FR','SA','SU'];
+function icsAlarm(){
+  var lead=parseInt(String(settings().leadMin||'0'),10)||0;
+  return ['BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Напоминание',
+          'TRIGGER:-PT'+lead+'M','END:VALARM'];
+}
+function buildIcs(opts){
+  opts=opts||{tasks:true,events:true,bd:true};
+  var now=new Date(),L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Домашний реестр//RU','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+                        'X-WR-CALNAME:Домашний реестр','X-WR-TIMEZONE:'+(Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow')];
+  var count=0;
+  function ev(uid,summary,date,time,extra,alarm){
+    L.push('BEGIN:VEVENT','UID:'+uid+'@home-registry','DTSTAMP:'+icsStamp(now));
+    if(time){
+      L.push('DTSTART:'+icsLocal(date,time));
+      L.push('DTEND:'+icsPlusHour(date,time));
+    }else{
+      L.push('DTSTART;VALUE=DATE:'+icsLocal(date,''));
+    }
+    L.push(icsFold('SUMMARY:'+icsEsc(summary)));
+    (extra||[]).forEach(function(x){L.push(x);});
+    if(alarm&&time)icsAlarm().forEach(function(x){L.push(x);});
+    L.push('END:VEVENT');
+    count++;
+  }
+  if(opts.tasks){
+    state.items.filter(visible).forEach(function(it){
+      (it.tasks||[]).forEach(function(t){
+        if(t.done||!t.due)return;
+        var rule=[];
+        if(t.repeat==='daily')rule.push('RRULE:FREQ=DAILY');
+        else if(t.repeat==='weekly')rule.push('RRULE:FREQ=WEEKLY');
+        else if(t.repeat==='monthly')rule.push('RRULE:FREQ=MONTHLY');
+        else if(t.repeat==='yearly')rule.push('RRULE:FREQ=YEARLY');
+        rule.push(icsFold('DESCRIPTION:'+icsEsc(it.name+(t.insId?' · '+insTitle(it,t.insId):''))));
+        ev('t-'+t.id,'☑ '+t.text,t.due,t.time||'',rule,true);
+      });
+    });
+  }
+  if(opts.events){
+    (state.events||[]).forEach(function(e){
+      var rule=[];
+      if(e.repeat==='daily')rule.push('RRULE:FREQ=DAILY');
+      else if(e.repeat==='weekly'){
+        var days=(e.days&&e.days.length)?e.days.map(function(d){return ICS_DOW[d];}).join(','):ICS_DOW[dowIndex(e.date)];
+        rule.push('RRULE:FREQ=WEEKLY;BYDAY='+days+(e.interval>1?';INTERVAL='+e.interval:'')+(e.until?';UNTIL='+e.until.replace(/-/g,'')+'T235900Z':''));
+      }
+      else if(e.repeat==='monthly')rule.push('RRULE:FREQ=MONTHLY');
+      else if(e.repeat==='yearly')rule.push('RRULE:FREQ=YEARLY');
+      var lit=e.itemId?find(e.itemId):null;
+      if(lit)rule.push(icsFold('DESCRIPTION:'+icsEsc(lit.name)));
+      ev('e-'+e.id,e.title,e.date,e.time||'',rule,true);
+    });
+  }
+  if(opts.bd){
+    (state.birthdays||[]).forEach(function(b){
+      ev('b-'+b.id,'🎂 '+b.name,b.date,'',['RRULE:FREQ=YEARLY'],false);
+    });
+  }
+  L.push('END:VCALENDAR');
+  return {text:L.join('\r\n')+'\r\n',count:count};
+}
+function downloadIcs(opts,name){
+  var res=buildIcs(opts);
+  if(!res.count){toast('Нечего выгружать — нет записей с датами');return;}
+  downloadBlob(new Blob([res.text],{type:'text/calendar;charset=utf-8'}),name||('домашний-реестр-'+todayStr()+'.ics'));
+  toast('Готово: '+plural(res.count,['запись','записи','записей'])+' — откройте файл на телефоне');
+}
+function taskToCalendar(it,taskId){
+  var task=null;
+  (it.tasks||[]).forEach(function(t){if(t.id===taskId)task=t;});
+  if(!task||!task.due){toast('Сначала поставьте задаче срок');return;}
+  var keep=state.items,keepEv=state.events,keepBd=state.birthdays;
+  state.items=[{name:it.name,cat:it.cat,status:'active',tasks:[task]}];
+  state.events=[];state.birthdays=[];
+  var res=buildIcs({tasks:true,events:false,bd:false});
+  state.items=keep;state.events=keepEv;state.birthdays=keepBd;
+  downloadBlob(new Blob([res.text],{type:'text/calendar;charset=utf-8'}),'задача.ics');
+  toast('Файл создан — откройте его, календарь предложит добавить событие');
 }
 
 /* ══════════ пуш-уведомления ══════════ */
@@ -3217,6 +3351,8 @@ function onClick(e){
     toast('Мероприятие удалено','Вернуть');
   }
   else if(a==='import-ev'){document.getElementById('import-ev-input').click();}
+  else if(a==='task-ics'&&it){taskToCalendar(it,b.dataset.sub);}
+  else if(a==='ics-all'){downloadIcs({tasks:true,events:true,bd:true});}
   else if(a==='push-on'){pushEnable();}
   else if(a==='push-off'){pushDisable();}
   else if(a==='notif-on'){askNotif();}
