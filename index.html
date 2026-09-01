@@ -1006,6 +1006,23 @@ var SVC_PRESETS=[
   {name:'ОСАГО',km:0,months:12},
   {name:'Техосмотр',km:0,months:24}
 ];
+var HOME_KINDS={own:'Своё',rent:'Съёмное',other:'Другое'};
+function homeOf(it){
+  return it.home||(it.home={kind:'',rent:'',payDay:'',until:'',deposit:'',landlord:'',contact:'',area:'',bought:'',cadastre:''});
+}
+/* ближайшая дата ежемесячного платежа по числу месяца */
+function nextPayDate(day){
+  var d=parseInt(day,10);
+  if(!d||d<1||d>31)return '';
+  var today=todayStr(),y=parseInt(today.slice(0,4),10),m=parseInt(today.slice(5,7),10);
+  function mk(yy,mm){
+    var last=new Date(yy,mm,0).getDate();
+    return yy+'-'+pad2(mm)+'-'+pad2(Math.min(d,last));
+  }
+  var cand=mk(y,m);
+  if(cand<today){m++;if(m>12){m=1;y++;}cand=mk(y,m);}
+  return cand;
+}
 function carOf(it){
   var c=it.car||(it.car={odo:'',odoAt:'',plan:[],log:[]});
   if(!c.plan)c.plan=[];
@@ -1093,6 +1110,8 @@ function renderNav(){
 /* ══════════ основная область ══════════ */
 function cardHTML(it){
   var badge='';
+  if(catOf(it)==='home'&&(it.home||{}).kind&&it.status==='active')
+    badge='<span class="badge archive">'+HOME_KINDS[it.home.kind].toLowerCase()+'</span>';
   if(it.status==='sale')badge='<span class="badge sale">продажа'+(it.price?' · '+esc(it.price):'')+'</span>';
   if(it.status==='archive')badge='<span class="badge archive">архив</span>';
   var meta=[];
@@ -1419,6 +1438,47 @@ function renderDetail(){
   h+='<button class="addphoto" data-a="add-photo" data-id="'+it.id+'" title="Добавить фото">+</button></div>';
   if(!provider())h+='<p class="hint">Фото сохраняются в облако — настройте синхронизацию через ⚙ вверху.</p>';
   h+='</section>';
+
+  if(catOf(it)==='home'){
+    var hm=homeOf(it);
+    h+='<section class="d-sec"><h3>Жильё</h3>'
+      +'<span class="seg">'
+      +Object.keys(HOME_KINDS).map(function(k){
+          return '<button class="'+(hm.kind===k?'on':'')+'" data-a="home-kind" data-id="'+it.id+'" data-v="'+k+'">'+HOME_KINDS[k]+'</button>';
+        }).join('')
+      +'</span>';
+    if(hm.kind==='rent'){
+      var pay=nextPayDate(hm.payDay);
+      h+='<div class="ad-grid" style="margin-top:10px">'
+        +'<div><label>Плата в месяц</label><input type="text" inputmode="numeric" value="'+esc(hm.rent)+'" data-f="home-rent" data-id="'+it.id+'" placeholder="45 000"></div>'
+        +'<div><label>Платить до какого числа</label><input type="text" inputmode="numeric" value="'+esc(hm.payDay)+'" data-f="home-payDay" data-id="'+it.id+'" placeholder="10"></div>'
+        +'<div><label>Договор действует до</label><input type="date" value="'+esc(hm.until)+'" data-f="home-until" data-id="'+it.id+'"></div>'
+        +'<div><label>Залог</label><input type="text" inputmode="numeric" value="'+esc(hm.deposit)+'" data-f="home-deposit" data-id="'+it.id+'" placeholder="45 000"></div>'
+        +'<div><label>Собственник</label><input type="text" value="'+esc(hm.landlord)+'" data-f="home-landlord" data-id="'+it.id+'" placeholder="Имя"></div>'
+        +'<div><label>Телефон собственника</label><input type="text" value="'+esc(hm.contact)+'" data-f="home-contact" data-id="'+it.id+'" placeholder="+7 900 000-00-00"></div>'
+        +'</div>';
+      var bits=[];
+      if(pay)bits.push('ближайший платёж — '+fmtDue(pay));
+      if(hm.until){
+        var left=daysBetween(todayStr(),hm.until);
+        bits.push(left>=0?('до конца договора '+plural(left,['день','дня','дней'])):('договор истёк '+fmtDue(hm.until)));
+      }
+      if(bits.length)h+='<p class="hint">'+bits.join(' · ')+'</p>';
+      h+='<div class="btnrow" style="margin-top:8px">'
+        +(hm.payDay?'<button class="btn ghost" data-a="home-pay-task" data-id="'+it.id+'">Напоминать о платеже</button>':'')
+        +(hm.until?'<button class="btn ghost" data-a="home-until-task" data-id="'+it.id+'">Напомнить о продлении</button>':'')
+        +'</div>';
+    }else if(hm.kind==='own'){
+      h+='<div class="ad-grid" style="margin-top:10px">'
+        +'<div><label>Площадь, м²</label><input type="text" inputmode="numeric" value="'+esc(hm.area)+'" data-f="home-area" data-id="'+it.id+'" placeholder="62"></div>'
+        +'<div><label>Дата покупки</label><input type="date" value="'+esc(hm.bought)+'" data-f="home-bought" data-id="'+it.id+'"></div>'
+        +'<div class="full"><label>Кадастровый номер</label><input type="text" value="'+esc(hm.cadastre)+'" data-f="home-cadastre" data-id="'+it.id+'" placeholder="00:00:0000000:0000"></div>'
+        +'</div>';
+    }else{
+      h+='<p class="hint">Выберите тип — появятся нужные поля: для съёмного плата и договор, для своего площадь и документы.</p>';
+    }
+    h+='</section>';
+  }
 
   if(catOf(it)==='car'){
     var c=carOf(it),odo=moneyNum(c.odo);
@@ -2393,6 +2453,30 @@ function onClick(e){
     refocus='add-spec';touch();renderDetail();
   }
   else if(a==='plan-kind'){newPlanKind=b.dataset.v;renderDetail();var i3=document.getElementById('add-plan');if(i3)i3.focus();}
+  else if(a==='home-kind'&&it){
+    homeOf(it).kind=b.dataset.v;
+    touch();renderDetail();renderMain();
+  }
+  else if(a==='home-pay-task'&&it){
+    var hm2=homeOf(it),due=nextPayDate(hm2.payDay);
+    if(!due){toast('Сначала укажите число, до которого платите');return;}
+    it.tasks=it.tasks||[];
+    it.tasks.push({id:uid(),text:'Оплатить аренду'+(moneyNum(hm2.rent)?' — '+moneyNum(hm2.rent).toLocaleString('ru-RU')+' \u20BD':''),done:false,due:due,repeat:'monthly'});
+    toast('Добавлена ежемесячная задача на '+fmtDue(due));
+    touch();renderDetail();renderNav();renderMain();
+  }
+  else if(a==='home-until-task'&&it){
+    var hm3=homeOf(it);
+    if(!hm3.until){toast('Укажите, до какой даты действует договор');return;}
+    var warn=hm3.until;
+    var dw=new Date(warn);dw.setDate(dw.getDate()-30);
+    var warnDate=dw.getFullYear()+'-'+pad2(dw.getMonth()+1)+'-'+pad2(dw.getDate());
+    if(warnDate<todayStr())warnDate=todayStr();
+    it.tasks=it.tasks||[];
+    it.tasks.push({id:uid(),text:'Продлить договор аренды (до '+fmtDue(hm3.until)+')',done:false,due:warnDate});
+    toast('Напоминание на '+fmtDue(warnDate));
+    touch();renderDetail();renderNav();renderMain();
+  }
   else if(a==='svc-add'&&it){
     var sel=document.getElementById('svc-preset'),v=sel?sel.value:'0';
     var nm,km,mo;
@@ -2783,6 +2867,10 @@ function onChange(e){
     renderDetail();
   }
   else if(f==='pl-url'){adPlatforms(it)[t.dataset.k].url=t.value;}
+  else if(f.indexOf('home-')===0){
+    homeOf(it)[f.slice(5)]=t.value;
+    renderDetail();renderMain();
+  }
   else if(f==='car-odo'){
     var cc2=carOf(it);
     cc2.odo=t.value;cc2.odoAt=todayStr();
