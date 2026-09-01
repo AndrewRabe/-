@@ -1286,6 +1286,7 @@ function renderMain(){
       h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
         +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
         +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
+        +'<input type="time" id="sum-task-time" title="Время (необязательно)" style="width:96px">'
         +'<select id="sum-task-repeat" title="Повтор">'
         +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
         +'</select>'
@@ -1319,7 +1320,7 @@ function renderMain(){
       timed.sort(function(a,b){return a.time<b.time?-1:1;});
       chips=chips.concat(timed);
       dayBd.forEach(function(bd){chips.push({cls:'b',time:'',text:'🎂 '+bd.name,go:{kind:'bd',id:bd.id}});});
-      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:'',text:e.t.text,go:{kind:'item',id:e.it.id}});});
+      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:e.t.time||'',text:e.t.text,go:{kind:'item',id:e.it.id}});});
 
       chips=chips.concat(untimed);
       for(k=0;k<Math.min((tasksBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot t"></span>';
@@ -1352,6 +1353,7 @@ function renderMain(){
     });
     selT.forEach(function(e){
       h+='<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+e.t.id+'">'
+        +(e.t.time?'<span class="ev-time">'+esc(e.t.time)+'</span>':'')
         +'<span class="t" data-a="open" data-id="'+e.it.id+'" style="cursor:pointer">'+esc(e.t.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
         +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+e.t.id+'">✕</button></div>';
     });
@@ -1583,10 +1585,12 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit){
     var itX=find(itemId),nmX=itX?insTitle(itX,x.insId):'';
     if(nmX)h+='<span class="rep" title="Из инструкции">📘 '+esc(nmX)+'</span>';
   }
+  if(kind==='tasks'&&x.time&&!dueEdit)h+='<span class="ev-time">'+esc(x.time)+'</span>';
   if(kind==='tasks'&&x.repeat&&!dueEdit)h+='<span class="rep" title="Периодическая задача">🔁 '+REPEATS[x.repeat]+'</span>';
   if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
   if(kind==='tasks'&&dueEdit){
     h+='<input type="date" class="duein" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'" title="Срок задачи">'
+      +'<input type="time" class="duein" value="'+esc(x.time||'')+'" data-f="task-time" data-id="'+itemId+'" data-sub="'+x.id+'" title="Время напоминания" style="width:96px">'
       +'<select class="duein" data-f="task-repeat" data-id="'+itemId+'" data-sub="'+x.id+'" title="Повтор">'
       +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'"'+((x.repeat||'')===r?' selected':'')+'>'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
       +'</select>';
@@ -1837,6 +1841,7 @@ function renderDetail(){
     +(it.tasks||[]).map(function(t){return rowHTML(it.id,'tasks',t,true,true);}).join('')
     +'<div class="addrow"><input type="text" id="add-task" placeholder="Новая задача…">'
     +'<input type="date" id="add-task-due" title="Срок (необязательно)">'
+    +'<input type="time" id="add-task-time" title="Время (необязательно)" style="width:96px">'
     +'<select id="add-task-repeat" title="Повтор">'
     +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
     +'</select>'
@@ -2021,6 +2026,12 @@ function openSettings(){
        pushState==='unsupported'?'Этот браузер не поддерживает пуши — попробуйте Chrome на Android.'
        :pushState==='on'?'Включено на этом устройстве. Каждое устройство подключается отдельно.'
        :'Пока выключено на этом устройстве.')+'</p>'
+    +'<label for="lead-min">Напоминать заранее</label>'
+    +'<select id="lead-min" data-f="set-leadMin">'
+    +[['0','в назначенное время'],['5','за 5 минут'],['10','за 10 минут'],['15','за 15 минут'],['30','за 30 минут'],['60','за час']]
+      .map(function(o){return '<option value="'+o[0]+'"'+(String(settings().leadMin||'0')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')
+    +'</select>'
+    +'<p class="hint">Задачи и мероприятия со временем присылают отдельное уведомление к сроку — проверка идёт каждые 15 минут, поэтому возможна задержка в несколько минут.</p>'
     +'<h4>Напоминание при открытии</h4>'
     +'<p class="hint">Браузер покажет одно уведомление в день — про просроченные и сегодняшние задачи, мероприятия и дни рождения. Работает, когда вы открываете приложение.</p>'
     +'<div class="btnrow">'
@@ -2989,6 +3000,7 @@ function onClick(e){
     if(b.dataset.kind==='plans')entry.kind=newPlanKind;
     if(b.dataset.kind==='tasks'){
       var dd=document.getElementById('add-task-due');if(dd&&dd.value)entry.due=dd.value;
+      var tt=document.getElementById('add-task-time');if(tt&&tt.value){entry.time=tt.value;if(!entry.due)entry.due=todayStr();}
       var rr2=document.getElementById('add-task-repeat');
       if(rr2&&rr2.value){entry.repeat=rr2.value;if(!entry.due)entry.due=todayStr();}
     }
@@ -3098,6 +3110,8 @@ function onClick(e){
     if(!sit)return;
     var entry={id:uid(),text:stext,done:false};
     if(std&&std.value)entry.due=std.value;
+    var stt=document.getElementById('sum-task-time');
+    if(stt&&stt.value){entry.time=stt.value;if(!entry.due)entry.due=todayStr();}
     var srp=document.getElementById('sum-task-repeat');
     if(srp&&srp.value){entry.repeat=srp.value;if(!entry.due)entry.due=todayStr();}
     sit.tasks=sit.tasks||[];sit.tasks.push(entry);
@@ -3453,6 +3467,14 @@ function onChange(e){
   }
   else if(f==='task-due'){
     (it.tasks||[]).forEach(function(x){if(x.id===t.dataset.sub)x.due=t.value||'';});
+    renderNav();renderMain();
+  }
+  else if(f==='task-time'){
+    (it.tasks||[]).forEach(function(x){
+      if(x.id!==t.dataset.sub)return;
+      x.time=t.value;
+      if(x.time&&!x.due)x.due=todayStr();
+    });
     renderNav();renderMain();
   }
   else if(f==='task-repeat'){
