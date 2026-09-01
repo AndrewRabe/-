@@ -142,6 +142,11 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .thumb.loading{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px}
 .thumb-err{display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:11px;padding:6px;border-style:dashed;cursor:pointer;line-height:1.3}
 .thumb-err:hover{border-color:var(--accent);color:var(--accent)}
+.photo-wrap{position:relative;width:86px;height:86px}
+.photo-del{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:rgba(15,20,15,.62);color:#fff;font-size:13px;line-height:22px;text-align:center;padding:0;opacity:0;transition:opacity .12s}
+.photo-wrap:hover .photo-del,.photo-del:focus-visible{opacity:1}
+@media (hover:none){.photo-del{opacity:1}}
+.photo-del:hover{background:var(--danger)}
 .addphoto{width:86px;height:86px;border-radius:10px;border:1.5px dashed var(--line);color:var(--muted);font-size:24px}
 .addphoto:hover{border-color:var(--accent);color:var(--accent)}
 #pviewer{position:fixed;inset:0;z-index:70;background:rgba(10,12,10,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px}
@@ -393,6 +398,7 @@ var state=null, saveTimer=null, retryTimer=null, syncing=false, lastPull=0;
 var route={view:'all',item:null};
 var _t0=new Date(), calY=_t0.getFullYear(), calM=_t0.getMonth(), calSel=todayStr();
 var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null, settingsBackend=null;
+var confirmPhoto=null, confirmPhotoTimer=null;
 var photoCache={};
 
 /* ══════════ бэкенд: GitHub ══════════ */
@@ -848,6 +854,7 @@ function hydratePhotos(root){
   });
 }
 function delPhoto(it,photoId){
+  confirmPhoto=null;
   var ph=(it.photos||[]).filter(function(p){return p.id===photoId;})[0];
   it.photos=(it.photos||[]).filter(function(p){return p.id!==photoId;});
   touch();renderDetail();closeViewer();
@@ -1163,7 +1170,9 @@ function renderDetail(){
 
   h+='<section class="d-sec"><h3>Фото</h3><div class="photos">';
   (it.photos||[]).forEach(function(p){
-    h+='<img class="thumb loading" alt="фото" data-photo="'+esc(p.path)+'" data-pid="'+p.id+'" data-a="view-photo" data-id="'+it.id+'" data-sub="'+p.id+'">';
+    h+='<span class="photo-wrap">'
+      +'<img class="thumb loading" alt="фото" data-photo="'+esc(p.path)+'" data-pid="'+p.id+'" data-a="view-photo" data-id="'+it.id+'" data-sub="'+p.id+'">'
+      +'<button class="photo-del" title="Удалить фото" aria-label="Удалить фото" data-a="del-photo" data-id="'+it.id+'" data-sub="'+p.id+'">✕</button></span>';
   });
   h+='<button class="addphoto" data-a="add-photo" data-id="'+it.id+'" title="Добавить фото">+</button></div>';
   if(!provider())h+='<p class="hint">Фото сохраняются в облако — настройте синхронизацию через ⚙ вверху.</p>';
@@ -2014,7 +2023,19 @@ function onClick(e){
   }
   else if(a==='view-photo'){e.stopPropagation();openViewer(id,b.dataset.sub);}
   else if(a==='photo-disk'){if(b.dataset.dpath)ydOpenInDisk(b.dataset.dpath);}
-  else if(a==='del-photo'&&it){delPhoto(it,b.dataset.sub);}
+  else if(a==='del-photo'&&it){
+    e.stopPropagation();
+    if(b.classList.contains('photo-del')&&confirmPhoto!==b.dataset.sub){
+      confirmPhoto=b.dataset.sub;
+      b.textContent='✓';b.style.opacity='1';b.title='Нажмите ещё раз, чтобы удалить';
+      toast('Нажмите ещё раз, чтобы удалить фото');
+      clearTimeout(confirmPhotoTimer);
+      confirmPhotoTimer=setTimeout(function(){confirmPhoto=null;renderDetail();},4000);
+      return;
+    }
+    confirmPhoto=null;clearTimeout(confirmPhotoTimer);
+    delPhoto(it,b.dataset.sub);
+  }
   else if(a==='close-viewer'){closeViewer();}
   else if(a==='del-ask'){confirmDel=true;renderDetail();}
   else if(a==='del-cancel'){confirmDel=false;renderDetail();}
