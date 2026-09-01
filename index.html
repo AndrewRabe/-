@@ -183,9 +183,19 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .ad-warn{font-size:12.5px;color:var(--sale);margin:2px 0}
 .ad-warn.bad{color:var(--danger)}
 
+/* ── напоминания у инструкций ── */
+.instr-rem{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.instr-rem .lbl{font-size:12px;color:var(--muted)}
+.instr-rem input[type=date]{padding:4px 8px;font-size:12.5px}
+.instr-rem select{padding:4px 8px;font-size:12.5px}
+.instr-rem .state{font-size:12px;font-weight:600}
+.instr-rem .state.soon{color:var(--sale)}
+.instr-rem .state.over{color:var(--danger)}
+
 /* ── дни рождения и повторы ── */
 .cal-dot.b{background:var(--sale)}
 .cal-dot.r{background:#7B6CD9}
+.cal-dot.i{background:#3E8E9E}
 .bd{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line)}
 .bd:first-of-type{border-top:none}
 .bd .ic{font-size:18px}
@@ -931,6 +941,22 @@ function eventOn(ev,ds){
   if(r==='yearly')return monthDay(ds)===monthDay(ev.date);
   return false;
 }
+function instrRemindersOn(ds){
+  var out=[];
+  state.items.filter(visible).forEach(function(it){
+    (it.instructions||[]).forEach(function(ins){
+      if(ins.due&&ins.due===ds)out.push({it:it,ins:ins});
+    });
+  });
+  return out;
+}
+function instrDueCount(){
+  var today=todayStr(),k=0;
+  state.items.filter(visible).forEach(function(it){
+    (it.instructions||[]).forEach(function(ins){if(ins.due&&ins.due<=today)k++;});
+  });
+  return k;
+}
 function eventsOn(ds){return (state.events||[]).filter(function(ev){return eventOn(ev,ds);});}
 /* дни рождения */
 function bdNext(bd){
@@ -1035,7 +1061,7 @@ function renderNav(){
   });
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
-  att+=eventsOn(today).length+bdsOn(today).length;
+  att+=eventsOn(today).length+bdsOn(today).length+instrDueCount();
   h+='</div><div class="navgroup"><h4>Сводки</h4>'
     +nv('tasks','Задачи',tasksN,'☑')
     +nv('cal','Календарь',att,'📅')
@@ -1125,17 +1151,19 @@ function renderMain(){
       var d=new Date(calY,calM,i-startDow+1);
       var ds=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
       var cls='cal-cell'+(d.getMonth()!==calM?' dim':'')+(ds===today?' today':'')+(ds===calSel?' sel':'');
-      var dayEv=eventsOn(ds),dayBd=bdsOn(ds),dots='',k;
+      var dayEv=eventsOn(ds),dayBd=bdsOn(ds),dayIn=instrRemindersOn(ds),dots='',k;
       for(k=0;k<Math.min((tasksBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot t"></span>';
       for(k=0;k<Math.min(dayEv.length,3);k++)dots+='<span class="cal-dot '+(dayEv[k].repeat?'r':'e')+'"></span>';
       for(k=0;k<Math.min(dayBd.length,2);k++)dots+='<span class="cal-dot b"></span>';
+      for(k=0;k<Math.min(dayIn.length,2);k++)dots+='<span class="cal-dot i"></span>';
       h+='<div class="'+cls+'" data-a="cal-day" data-v="'+ds+'" role="button" tabindex="0"><span class="cal-n">'+d.getDate()+'</span><span class="cal-dots">'+dots+'</span></div>';
     }
     h+='</div><div class="cal-legend"><span><span class="cal-dot t"></span>задачи</span><span><span class="cal-dot e"></span>мероприятия</span>'
-      +'<span><span class="cal-dot r"></span>повторяющиеся</span><span><span class="cal-dot b"></span>дни рождения</span></div>';
+      +'<span><span class="cal-dot r"></span>повторяющиеся</span><span><span class="cal-dot b"></span>дни рождения</span>'
+      +'<span><span class="cal-dot i"></span>инструкции</span></div>';
     var selT=(tasksBy[calSel]||[]);
     var selE=eventsOn(calSel).slice().sort(function(a,b){return (a.time||'')<(b.time||'')?-1:1;});
-    var selB=bdsOn(calSel);
+    var selB=bdsOn(calSel),selI=instrRemindersOn(calSel);
     h+='<div class="groupblock"><h3>📅 '+fmtDayTitle(calSel)+'</h3>';
     selB.forEach(function(bd){
       var age=bdAge(bd,calSel);
@@ -1153,7 +1181,13 @@ function renderMain(){
         +(lit?'<span class="src" data-a="open" data-id="'+lit.id+'">'+esc(lit.name)+'</span>':'')
         +'<button class="x" title="'+(ev.repeat?'Удалить все повторы':'Удалить')+'" data-a="del-event" data-sub="'+ev.id+'">✕</button></div>';
     });
-    if(!selT.length&&!selE.length&&!selB.length)h+='<p class="hint">На этот день ничего не запланировано.</p>';
+    selI.forEach(function(e){
+      h+='<div class="row"><span class="ev-time">📘</span><span class="t">'+esc(e.ins.title||'Инструкция')+'</span>'
+        +(e.ins.repeat?'<span class="rep">'+REPEATS[e.ins.repeat]+'</span>':'')
+        +'<span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
+        +'<button class="x" title="Отметить сделанным" data-a="instr-done" data-id="'+e.it.id+'" data-sub="'+e.ins.id+'">✓</button></div>';
+    });
+    if(!selT.length&&!selE.length&&!selB.length&&!selI.length)h+='<p class="hint">На этот день ничего не запланировано.</p>';
     h+='<div class="addrow"><input type="text" id="ev-title" placeholder="Новое мероприятие в этот день…"><input type="time" id="ev-time">'
       +'<button class="btn ghost" data-a="add-event">Добавить</button></div>'
       +'<div class="addrow"><select id="ev-repeat" aria-label="Повтор">'
@@ -1461,9 +1495,20 @@ function renderDetail(){
     if(editingInstr[ins.id]){
       h+='<div class="instr"><input value="'+esc(ins.title)+'" placeholder="Название" data-f="instr-title" data-id="'+it.id+'" data-sub="'+ins.id+'">'
         +'<textarea data-f="instr-text" data-id="'+it.id+'" data-sub="'+ins.id+'" placeholder="Порядок действий, номера мастеров, ссылки…">'+esc(ins.text)+'</textarea>'
-        +'<div class="tools"><button data-a="instr-done" data-sub="'+ins.id+'">Готово</button></div></div>';
+        +'<div class="tools"><button data-a="instr-edit-done" data-sub="'+ins.id+'">Готово</button></div></div>';
     }else{
+      var rd=ins.due||'',rp=ins.repeat||'',rcls=rd?dueClass(rd):'';
       h+='<div class="instr"><h4>'+esc(ins.title||'Без названия')+'</h4><p>'+esc(ins.text)+'</p>'
+        +'<div class="instr-rem">'
+        +'<span class="lbl">напомнить</span>'
+        +'<input type="date" value="'+esc(rd)+'" data-f="instr-due" data-id="'+it.id+'" data-sub="'+ins.id+'" title="Когда напомнить">'
+        +'<select data-f="instr-repeat" data-id="'+it.id+'" data-sub="'+ins.id+'" title="Как часто повторять">'
+        +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'"'+(rp===r?' selected':'')+'>'+REPEATS[r]+'</option>';}).join('')
+        +'</select>'
+        +(rd?'<span class="state '+rcls+'">'+(rcls==='over'?'просрочено с '+fmtDue(rd):rcls==='today'?'сегодня':'до '+fmtDue(rd))+'</span>':'')
+        +(rd?'<button data-a="instr-done" data-id="'+it.id+'" data-sub="'+ins.id+'" style="font-size:12.5px;color:var(--accent);font-weight:600">Сделано</button>':'')
+        +'<button data-a="instr-task" data-id="'+it.id+'" data-sub="'+ins.id+'" style="font-size:12.5px;color:var(--accent);font-weight:600">В задачи</button>'
+        +'</div>'
         +'<div class="tools"><button data-a="instr-edit" data-sub="'+ins.id+'">Изменить</button>'
         +'<button class="rm" data-a="del-sub" data-id="'+it.id+'" data-kind="instructions" data-sub="'+ins.id+'">Удалить</button></div></div>';
     }
@@ -1870,6 +1915,11 @@ function dueSummary(){
     });
   });
   eventsOn(today).forEach(function(ev){evs.push((ev.time?ev.time+' ':'')+ev.title);});
+  state.items.filter(visible).forEach(function(it){
+    (it.instructions||[]).forEach(function(ins){
+      if(ins.due&&ins.due<=today)tasks.push((ins.title||'инструкция')+' — '+it.name);
+    });
+  });
   bdsOn(today).forEach(function(bd){bds.push(bd.name);});
   return {tasks:tasks,events:evs,bds:bds,total:tasks.length+evs.length+bds.length};
 }
@@ -2486,7 +2536,41 @@ function onClick(e){
     touch();renderDetail();
   }
   else if(a==='instr-edit'){editingInstr[b.dataset.sub]=true;renderDetail();}
-  else if(a==='instr-done'){delete editingInstr[b.dataset.sub];renderDetail();}
+  else if(a==='instr-edit-done'){delete editingInstr[b.dataset.sub];renderDetail();}
+  else if(a==='instr-done'&&it){
+    (it.instructions||[]).forEach(function(ins){
+      if(ins.id!==b.dataset.sub||!ins.due)return;
+      if(ins.repeat){
+        var next=ins.repeat==='daily'?addMonths(ins.due,0):'';
+        if(ins.repeat==='daily'){var d1=new Date(ins.due);d1.setDate(d1.getDate()+1);next=d1.getFullYear()+'-'+pad2(d1.getMonth()+1)+'-'+pad2(d1.getDate());}
+        else if(ins.repeat==='weekly'){var d7=new Date(ins.due);d7.setDate(d7.getDate()+7);next=d7.getFullYear()+'-'+pad2(d7.getMonth()+1)+'-'+pad2(d7.getDate());}
+        else if(ins.repeat==='monthly')next=addMonths(ins.due,1);
+        else if(ins.repeat==='yearly')next=addMonths(ins.due,12);
+        var today0=todayStr();
+        while(next&&next<today0){
+          if(ins.repeat==='daily'){var dn=new Date(next);dn.setDate(dn.getDate()+1);next=dn.getFullYear()+'-'+pad2(dn.getMonth()+1)+'-'+pad2(dn.getDate());}
+          else if(ins.repeat==='weekly'){var wn=new Date(next);wn.setDate(wn.getDate()+7);next=wn.getFullYear()+'-'+pad2(wn.getMonth()+1)+'-'+pad2(wn.getDate());}
+          else if(ins.repeat==='monthly')next=addMonths(next,1);
+          else next=addMonths(next,12);
+        }
+        ins.due=next;
+        toast('Отмечено, следующее напоминание — '+fmtDue(next));
+      }else{
+        ins.due='';
+        toast('Напоминание снято');
+      }
+    });
+    touch();renderDetail();renderNav();renderMain();
+  }
+  else if(a==='instr-task'&&it){
+    (it.instructions||[]).forEach(function(ins){
+      if(ins.id!==b.dataset.sub)return;
+      it.tasks=it.tasks||[];
+      it.tasks.push({id:uid(),text:ins.title||'Инструкция',done:false,due:ins.due||todayStr()});
+      toast('Добавлено в задачи: '+(ins.title||'инструкция'));
+    });
+    touch();renderDetail();renderNav();
+  }
   else if(a==='add-photo'&&it){
     var pi=document.getElementById('photo-input');
     pi.dataset.item=it.id;pi.value='';pi.click();
@@ -2575,6 +2659,14 @@ function onChange(e){
   else if(f==='cat'){it.cat=t.value;renderAll();}
   else if(f==='spec-k'||f==='spec-v'){
     it.specs.forEach(function(s){if(s.id===t.dataset.sub){if(f==='spec-k')s.k=t.value;else s.v=t.value;}});
+  }
+  else if(f==='instr-due'||f==='instr-repeat'){
+    (it.instructions||[]).forEach(function(ins){
+      if(ins.id!==t.dataset.sub)return;
+      if(f==='instr-due')ins.due=t.value;else ins.repeat=t.value;
+      if(ins.repeat&&!ins.due)ins.due=todayStr();
+    });
+    renderDetail();renderNav();renderMain();
   }
   else if(f==='instr-title'||f==='instr-text'){
     it.instructions.forEach(function(s){if(s.id===t.dataset.sub){if(f==='instr-title')s.title=t.value;else s.text=t.value;}});
