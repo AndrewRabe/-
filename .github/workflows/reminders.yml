@@ -1,0 +1,26 @@
+name: Напоминания в Telegram
+
+on:
+  schedule:
+    - cron: '0 5 * * *'    # 08:00 по Москве (UTC+3)
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Установить зависимости
+        run: pip install requests
+      - name: Собрать и отправить напоминание
+        working-directory: monitor
+        env:
+          YANDEX_TOKEN: ${{ secrets.YANDEX_TOKEN }}
+          OZON_TG_TOKEN: ${{ secrets.OZON_TG_TOKEN }}
+          OZON_TG_CHAT_ID: ${{ secrets.OZON_TG_CHAT_ID }}
+          TZ_OFFSET: '3'
+        run: python reminders.py

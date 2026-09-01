@@ -2179,10 +2179,9 @@ function parseIcs(text){
       out.push({kind:'birthday',title:nm||e.summary,date:date,noAge:true});
       return;
     }
-    if(!rep&&date<today)return;                 /* разовое прошедшее — пропускаем */
-    if(rep&&until&&until<today)return;           /* повтор уже закончился */
     var ev={title:e.summary,date:date,time:time};
     if(rep){ev.repeat=rep;if(days&&days.length)ev.days=days;if(until)ev.until=until;if(interval>1)ev.interval=interval;}
+    ev.past=(!rep&&date<today)||(!!rep&&!!until&&until<today);
     out.push(ev);
   });
   return out;
@@ -2304,6 +2303,73 @@ function runImportTasks(){
   touch();renderAll();
   toast(added?('Перенесено задач: '+added+' из '+plural(lists,['списка','списков','списков'])):'Новых задач не нашлось');
 }
+var evImport=null,evOpts={future:true,repeat:true,past:false,bd:true,pastYears:1};
+function openImportEvents(){
+  var m=document.getElementById('modal');
+  var arr=evImport||[],today=todayStr();
+  var since=(parseInt(today.slice(0,4),10)-evOpts.pastYears)+today.slice(4);
+  var nBd=arr.filter(function(e){return e.kind==='birthday';}).length;
+  var nRep=arr.filter(function(e){return e.kind!=='birthday'&&e.repeat&&!e.past;}).length;
+  var nFut=arr.filter(function(e){return e.kind!=='birthday'&&!e.repeat&&!e.past;}).length;
+  var nPast=arr.filter(function(e){return e.kind!=='birthday'&&e.past&&e.date>=since;}).length;
+  var nOld=arr.filter(function(e){return e.kind!=='birthday'&&e.past&&e.date<since;}).length;
+  m.hidden=false;
+  function row(key,label,count,disabled){
+    return '<label style="display:flex;gap:8px;align-items:center;margin:7px 0;color:var(--ink);font-size:13.5px'+(count?'':';opacity:.5')+'">'
+      +'<input type="checkbox" '+(evOpts[key]&&count?'checked ':'')+(count?'':'disabled ')+'data-f="ev-opt" data-k="'+key+'">'
+      +label+' <span class="wish-meta">— '+count+'</span></label>';
+  }
+  m.innerHTML='<div class="modal-box"><h3>Что перенести из календаря</h3>'
+    +row('future','Будущие мероприятия',nFut)
+    +row('repeat','Повторяющиеся (работа, тренировки)',nRep)
+    +row('bd','Дни рождения',nBd)
+    +row('past','Прошедшие за последние годы',nPast)
+    +'<label style="display:block;font-size:13px;color:var(--muted);margin:6px 0 0">Сколько лет прошлого брать</label>'
+    +'<select data-f="ev-years" style="max-width:160px">'
+    +[1,2,3,5,10].map(function(y){return '<option value="'+y+'"'+(evOpts.pastYears===y?' selected':'')+'>'+plural(y,['год','года','лет'])+'</option>';}).join('')
+    +'</select>'
+    +(nOld?'<p class="hint">Ещё '+nOld+' событий старше выбранного срока — они не переносятся.</p>':'')
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<button class="btn" data-a="ev-run">Перенести</button></div></div>';
+}
+function runImportEvents(){
+  var arr=evImport||[],today=todayStr();
+  var since=(parseInt(today.slice(0,4),10)-evOpts.pastYears)+today.slice(4);
+  var have={},haveBd={},added=0,addedBd=0;
+  (state.events||[]).forEach(function(e){have[e.title+'|'+e.date+'|'+(e.repeat||'')]=1;});
+  (state.birthdays||[]).forEach(function(b){haveBd[b.name+'|'+monthDay(b.date)]=1;});
+  arr.forEach(function(e){
+    if(!e||!e.title||!e.date)return;
+    if(e.kind==='birthday'){
+      if(!evOpts.bd)return;
+      var bk=String(e.title)+'|'+monthDay(e.date);
+      if(haveBd[bk])return;
+      haveBd[bk]=1;
+      state.birthdays.push({id:uid(),name:String(e.title),date:String(e.date),noAge:true});
+      addedBd++;return;
+    }
+    if(e.past){
+      if(!evOpts.past||e.date<since)return;
+    }else if(e.repeat){
+      if(!evOpts.repeat)return;
+    }else if(!evOpts.future)return;
+    var k=String(e.title)+'|'+String(e.date)+'|'+(e.repeat||'');
+    if(have[k])return;
+    have[k]=1;
+    var ne={id:uid(),title:String(e.title),date:String(e.date),time:e.time?String(e.time):'',itemId:'',repeat:e.repeat||''};
+    if(e.days)ne.days=e.days;
+    if(e.until)ne.until=e.until;
+    if(e.interval)ne.interval=e.interval;
+    state.events.push(ne);
+    added++;
+  });
+  evImport=null;closeModal();
+  touch();renderAll();
+  var msg=[];
+  if(added)msg.push('мероприятий: '+added);
+  if(addedBd)msg.push('дней рождения: '+addedBd);
+  toast(msg.length?('Перенесено — '+msg.join(', ')):'Новых записей не нашлось');
+}
 function doImportEvents(file){
   var fr=new FileReader();
   fr.onload=function(){
@@ -2316,34 +2382,8 @@ function doImportEvents(file){
         arr=Array.isArray(data)?data:(data&&Array.isArray(data.events)?data.events:null);
       }
       if(!arr)throw new Error('bad');
-      var have={},haveBd={};
-      (state.events||[]).forEach(function(e){have[e.title+'|'+e.date+'|'+(e.repeat||'')]=1;});
-      (state.birthdays||[]).forEach(function(b){haveBd[b.name+'|'+monthDay(b.date)]=1;});
-      var added=0,addedBd=0;
-      arr.forEach(function(e){
-        if(!e||!e.title||!e.date)return;
-        if(e.kind==='birthday'){
-          var bk=String(e.title)+'|'+monthDay(e.date);
-          if(haveBd[bk])return;
-          haveBd[bk]=1;
-          state.birthdays.push({id:uid(),name:String(e.title),date:String(e.date),noAge:true});
-          addedBd++;return;
-        }
-        var k=String(e.title)+'|'+String(e.date)+'|'+(e.repeat||'');
-        if(have[k])return;
-        have[k]=1;
-        var ne2={id:uid(),title:String(e.title),date:String(e.date),time:e.time?String(e.time):'',itemId:'',repeat:e.repeat||''};
-        if(e.days)ne2.days=e.days;
-        if(e.until)ne2.until=e.until;
-        if(e.interval)ne2.interval=e.interval;
-        state.events.push(ne2);
-        added++;
-      });
-      touch();renderAll();closeSettings();
-      var msg=[];
-      if(added)msg.push('мероприятий: '+added);
-      if(addedBd)msg.push('дней рождения: '+addedBd);
-      toast(msg.length?('Добавлено — '+msg.join(', ')):'Новых записей в файле нет');
+      evImport=arr;
+      closeSettings();openImportEvents();
     }catch(e){toast('Файл не похож на список мероприятий');}
   };
   fr.readAsText(file);
@@ -2791,8 +2831,9 @@ function onClick(e){
   else if(a==='open'){e.stopPropagation();route.item=id;confirmDel=false;editingInstr={};renderDetail();}
   else if(a==='close'){closeDetail();}
   else if(a==='new'){openModal();}
-  else if(a==='modal-close'){importLists=null;closeModal();}
+  else if(a==='modal-close'){importLists=null;evImport=null;closeModal();}
   else if(a==='imp-run'){runImportTasks();}
+  else if(a==='ev-run'){runImportEvents();}
   else if(a==='settings'){openSettings();}
   else if(a==='settings-close'){closeSettings();}
   else if(a==='pick-backend'){settingsBackend=b.dataset.v;openSettings();}
@@ -3266,6 +3307,8 @@ function onChange(e){
   }
   var f=t.dataset&&t.dataset.f;
   if(!f)return;
+  if(f==='ev-opt'){evOpts[t.dataset.k]=t.checked;return;}
+  if(f==='ev-years'){evOpts.pastYears=parseInt(t.value,10)||1;openImportEvents();return;}
   if(f==='imp-pick'){if(importLists)importLists[t.dataset.k].pick=t.checked;return;}
   if(f==='imp-target'){if(importLists)importLists[t.dataset.k].target=t.value;return;}
   if(f==='imp-done'){impDone=t.checked;return;}
