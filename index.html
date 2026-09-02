@@ -370,6 +370,7 @@ details.help li{margin-bottom:4px}
 <div id="toast" hidden></div>
 <input id="photo-input" type="file" accept="image/*" hidden>
 <input id="import-input" type="file" accept="application/json,.json" hidden>
+<input id="merge-input" type="file" accept="application/json,.json" hidden>
 <input id="import-ev-input" type="file" accept=".json,.ics,application/json,text/calendar" hidden>
 <input id="import-tasks-input" type="file" accept=".json,.txt,.csv,application/json,text/plain" hidden>
 
@@ -2062,10 +2063,11 @@ function openSettings(){
     })()
     +'<h4>Резервная копия</h4>'
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
+    +'<button class="btn ghost" data-a="merge">Добавить из копии</button>'
     +'<button class="btn ghost" data-a="import">Восстановить из файла</button>'
     +'<button class="btn ghost" data-a="import-ev">Добавить мероприятия из файла</button>'
     +'<button class="btn ghost" data-a="import-tasks">Добавить задачи из файла</button></div>'
-    +'<p class="hint">Копия содержит все объекты, задачи и мероприятия (без фото). «Добавить мероприятия» понимает .ics — экспорт Google или Яндекс Календаря (повторы и дни рождения тоже). «Добавить задачи» принимает Tasks.json из Google Takeout или обычный список строк; задачи лягут в выбранный объект.</p>'
+    +'<p class="hint">«Добавить из копии» дописывает записи к текущим и ничего не стирает; «Восстановить из файла» заменяет всё содержимое. Копия содержит все объекты, задачи и мероприятия (без фото). «Добавить мероприятия» понимает .ics — экспорт Google или Яндекс Календаря (повторы и дни рождения тоже). «Добавить задачи» принимает Tasks.json из Google Takeout или обычный список строк; задачи лягут в выбранный объект.</p>'
     +'<div class="modal-foot"><button class="btn ghost" data-a="settings-close">Закрыть</button></div></div>';
   s.innerHTML=h;
 }
@@ -2421,6 +2423,126 @@ function runImportEvents(){
   if(added)msg.push('мероприятий: '+added);
   if(addedBd)msg.push('дней рождения: '+addedBd);
   toast(msg.length?('Перенесено — '+msg.join(', ')):'Новых записей не нашлось');
+}
+/* добавляет содержимое копии к текущим данным, ничего не стирая */
+function doMerge(file){
+  var fr=new FileReader();
+  fr.onload=function(){
+    var data;
+    try{data=JSON.parse(fr.result);}catch(e){toast('Файл не читается');return;}
+    if(!data||!Array.isArray(data.items)){toast('Файл не похож на копию реестра');return;}
+    markUndo();
+    var added={items:0,tasks:0,plans:0,instr:0,events:0,bd:0,wishes:0,places:0};
+
+    /* места: по названию и пути */
+    var placeMap={};
+    (data.places||[]).forEach(function(pl){
+      var exist=null;
+      placesAll().forEach(function(cur){if(cur.name===pl.name)exist=cur;});
+      if(exist){placeMap[pl.id]=exist.id;return;}
+      var np={id:uid(),name:pl.name,parentId:''};
+      placesAll().push(np);placeMap[pl.id]=np.id;added.places++;
+    });
+    (data.places||[]).forEach(function(pl){
+      if(!pl.parentId||!placeMap[pl.id]||!placeMap[pl.parentId])return;
+      var mine=placeById(placeMap[pl.id]);
+      if(mine&&!mine.parentId)mine.parentId=placeMap[pl.parentId];
+    });
+
+    (data.items||[]).forEach(function(src){
+      var dst=null;
+      state.items.forEach(function(cur){if(cur.name===src.name)dst=cur;});
+      if(!dst){
+        dst={id:uid(),name:src.name||'Без названия',cat:CATS[src.cat]?src.cat:'stuff',
+             status:src.status||'active',price:src.price||'',notes:src.notes||'',
+             specs:[],instructions:[],tasks:[],questions:[],plans:[],photos:[]};
+        if(src.placeId&&placeMap[src.placeId])dst.placeId=placeMap[src.placeId];
+        if(src.spot)dst.spot=src.spot;
+        state.items.push(dst);added.items++;
+      }
+      ['tasks','plans','questions'].forEach(function(kind){
+        dst[kind]=dst[kind]||[];
+        var have={};
+        dst[kind].forEach(function(x){have[x.text]=1;});
+        (src[kind]||[]).forEach(function(x){
+          if(!x||!x.text||have[x.text])return;
+          have[x.text]=1;
+          var e={id:uid(),text:x.text,done:!!x.done};
+          if(x.due)e.due=x.due;
+          if(x.time)e.time=x.time;
+          if(x.repeat)e.repeat=x.repeat;
+          if(x.kind)e.kind=x.kind;
+          dst[kind].push(e);
+          if(kind==='tasks')added.tasks++;else if(kind==='plans')added.plans++;
+        });
+      });
+      dst.instructions=dst.instructions||[];
+      var haveIns={};
+      dst.instructions.forEach(function(x){haveIns[x.title]=1;});
+      (src.instructions||[]).forEach(function(x){
+        if(!x||!x.title||haveIns[x.title])return;
+        haveIns[x.title]=1;
+        dst.instructions.push({id:uid(),title:x.title,text:x.text||'',due:x.due||'',repeat:x.repeat||''});
+        added.instr++;
+      });
+      dst.specs=dst.specs||[];
+      var haveSpec={};
+      dst.specs.forEach(function(x){haveSpec[x.k]=1;});
+      (src.specs||[]).forEach(function(x){
+        if(!x||!x.k||haveSpec[x.k])return;
+        haveSpec[x.k]=1;
+        dst.specs.push({id:uid(),k:x.k,v:x.v||''});
+      });
+    });
+
+    var haveEv={};
+    (state.events||[]).forEach(function(e){haveEv[e.title+'|'+e.date+'|'+(e.repeat||'')]=1;});
+    (data.events||[]).forEach(function(e){
+      if(!e||!e.title||!e.date)return;
+      var k=e.title+'|'+e.date+'|'+(e.repeat||'');
+      if(haveEv[k])return;
+      haveEv[k]=1;
+      var ne={id:uid(),title:e.title,date:e.date,time:e.time||'',itemId:'',repeat:e.repeat||''};
+      if(e.days)ne.days=e.days;
+      if(e.until)ne.until=e.until;
+      if(e.interval)ne.interval=e.interval;
+      state.events.push(ne);added.events++;
+    });
+
+    var haveBd={};
+    (state.birthdays||[]).forEach(function(b){haveBd[b.name+'|'+monthDay(b.date)]=1;});
+    (data.birthdays||[]).forEach(function(b){
+      if(!b||!b.name||!b.date)return;
+      var k=b.name+'|'+monthDay(b.date);
+      if(haveBd[k])return;
+      haveBd[k]=1;
+      state.birthdays.push({id:uid(),name:b.name,date:b.date,noAge:!!b.noAge});added.bd++;
+    });
+
+    var haveW={};
+    (state.wishes||[]).forEach(function(w){haveW[w.title]=1;});
+    (data.wishes||[]).forEach(function(w){
+      if(!w||!w.title||haveW[w.title])return;
+      haveW[w.title]=1;
+      state.wishes.push({id:uid(),title:w.title,target:w.target||'',last:'',min:'',
+                         links:(w.links||[]).map(function(l){return {id:uid(),market:l.market||'other',url:l.url||''};}),
+                         status:'active'});
+      added.wishes++;
+    });
+
+    touch();renderAll();closeSettings();
+    var parts=[];
+    if(added.items)parts.push('объектов '+added.items);
+    if(added.tasks)parts.push('задач '+added.tasks);
+    if(added.plans)parts.push('покупок '+added.plans);
+    if(added.instr)parts.push('инструкций '+added.instr);
+    if(added.events)parts.push('мероприятий '+added.events);
+    if(added.bd)parts.push('дней рождения '+added.bd);
+    if(added.wishes)parts.push('желаний '+added.wishes);
+    if(added.places)parts.push('мест '+added.places);
+    toast(parts.length?('Добавлено: '+parts.join(', ')):'Всё из файла уже есть','Отменить');
+  };
+  fr.readAsText(file);
 }
 function doImportEvents(file){
   var fr=new FileReader();
@@ -3077,6 +3199,7 @@ function onClick(e){
   else if(a==='yd-off'){lsSet(YDKEY,null);if(backendName()==='yandex')lsSet(BACKKEY,null);closeSettings();setChip(provider()?'saved':'local');toast('Яндекс Диск отключён, данные остались на устройстве');}
   else if(a==='export'){doExport();}
   else if(a==='import'){document.getElementById('import-input').click();}
+  else if(a==='merge'){document.getElementById('merge-input').click();}
   else if(a==='create'){
     var name=document.getElementById('ni-name').value.trim();
     if(!name){document.getElementById('ni-name').focus();return;}
@@ -3527,6 +3650,10 @@ function onChange(e){
   }
   if(t.id==='import-input'){
     if(t.files&&t.files[0])doImport(t.files[0]);
+    t.value='';return;
+  }
+  if(t.id==='merge-input'){
+    if(t.files&&t.files[0])doMerge(t.files[0]);
     t.value='';return;
   }
   if(t.id==='import-ev-input'){
