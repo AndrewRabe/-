@@ -369,10 +369,10 @@ details.help li{margin-bottom:4px}
 <div id="pviewer" hidden></div>
 <div id="toast" hidden></div>
 <input id="photo-input" type="file" accept="image/*" hidden>
-<input id="import-input" type="file" accept="application/json,.json" hidden>
-<input id="merge-input" type="file" accept="application/json,.json" hidden>
-<input id="import-ev-input" type="file" accept=".json,.ics,application/json,text/calendar" hidden>
-<input id="import-tasks-input" type="file" accept=".json,.txt,.csv,application/json,text/plain" hidden>
+<input id="import-input" type="file" hidden>
+<input id="merge-input" type="file" hidden>
+<input id="import-ev-input" type="file" hidden>
+<input id="import-tasks-input" type="file" hidden>
 
 <script src="vendor/qrcode.js"></script>
 <script id="app-code">
@@ -2064,6 +2064,7 @@ function openSettings(){
     +'<h4>Резервная копия</h4>'
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
     +'<button class="btn ghost" data-a="merge">Добавить из копии</button>'
+    +'<button class="btn ghost" data-a="paste">Вставить текстом</button>'
     +'<button class="btn ghost" data-a="import">Восстановить из файла</button>'
     +'<button class="btn ghost" data-a="import-ev">Добавить мероприятия из файла</button>'
     +'<button class="btn ghost" data-a="import-tasks">Добавить задачи из файла</button></div>'
@@ -2158,7 +2159,7 @@ function doImport(file){
   fr.onload=function(){
     try{
       var data=JSON.parse(fr.result);
-      if(!data||!Array.isArray(data.items))throw new Error('bad');
+      if(!isRegistryCopy(data))throw new Error('bad');
       if(!Array.isArray(data.events))data.events=[];
       data.rev=Math.max(data.rev||0,(state.rev||0))+1;
       state=data;writeLocal();touch();renderAll();closeSettings();
@@ -2425,12 +2426,62 @@ function runImportEvents(){
   toast(msg.length?('Перенесено — '+msg.join(', ')):'Новых записей не нашлось');
 }
 /* добавляет содержимое копии к текущим данным, ничего не стирая */
+function openPaste(){
+  closeSettings();                       /* иначе окно вставки окажется под настройками */
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  m.innerHTML='<div class="modal-box"><h3>Вставить данные текстом</h3>'
+    +'<p class="hint">Откройте файл переноса (копия реестра, .ics или Tasks.json), скопируйте всё содержимое и вставьте сюда. Приложение само поймёт, что это.</p>'
+    +'<textarea id="paste-text" style="min-height:160px" placeholder="Вставьте содержимое файла…"></textarea>'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<button class="btn" data-a="paste-run">Перенести</button></div></div>';
+  var ta=document.getElementById('paste-text');
+  if(ta)ta.focus();
+}
+/* копия реестра: объекты с названием, а не списки задач Google */
+function isRegistryCopy(data){
+  if(!data||!Array.isArray(data.items)||!data.items.length)return false;
+  var withName=0,withGoogle=0;
+  data.items.forEach(function(x){
+    if(!x||typeof x!=='object')return;
+    if(typeof x.name==='string'&&x.name)withName++;
+    if(x.kind==='tasks#taskList'||Array.isArray(x.recurrences)||(typeof x.title==='string'&&x.name===undefined))withGoogle++;
+  });
+  return withName>0&&withName>=withGoogle;
+}
+/* определяем формат и запускаем нужный перенос */
+function applyTransfer(text){
+  if(/BEGIN:VCALENDAR/.test(text)){
+    try{
+      evImport=parseIcs(text);
+      if(!evImport.length){toast('В календаре не нашлось записей');return;}
+      closeSettings();openImportEvents();
+    }catch(e){toast('Календарь не разобрался: '+e.message);}
+    return;
+  }
+  var data;
+  try{data=JSON.parse(text);}
+  catch(e){toast('Не похоже ни на копию, ни на календарь: '+e.message);return;}
+  if(isRegistryCopy(data)){mergeState(data);return;}
+  try{
+    importLists=parseTaskLists(text);
+    if(!importLists.length){toast('В файле не нашлось ни задач, ни объектов');return;}
+    var vis0=state.items.filter(visible);
+    importLists.forEach(function(L){
+      L.pick=L.tasks.some(function(t){return !t.done;});
+      if(!L.target&&vis0.length)L.target=vis0[0].id;
+    });
+    closeSettings();openImportTasks();
+  }catch(e){toast('Файл не разобрался: '+e.message);}
+}
 function doMerge(file){
   var fr=new FileReader();
-  fr.onload=function(){
-    var data;
-    try{data=JSON.parse(fr.result);}catch(e){toast('Файл не читается');return;}
-    if(!data||!Array.isArray(data.items)){toast('Файл не похож на копию реестра');return;}
+  fr.onload=function(){applyTransfer(String(fr.result||''));};
+  fr.onerror=function(){toast('Файл не открылся — попробуйте «Вставить текстом»');};
+  fr.readAsText(file);
+}
+function mergeState(data){
+  (function(){
     markUndo();
     var added={items:0,tasks:0,plans:0,instr:0,events:0,bd:0,wishes:0,places:0};
 
@@ -2541,8 +2592,7 @@ function doMerge(file){
     if(added.wishes)parts.push('желаний '+added.wishes);
     if(added.places)parts.push('мест '+added.places);
     toast(parts.length?('Добавлено: '+parts.join(', ')):'Всё из файла уже есть','Отменить');
-  };
-  fr.readAsText(file);
+  })();
 }
 function doImportEvents(file){
   var fr=new FileReader();
@@ -3200,6 +3250,14 @@ function onClick(e){
   else if(a==='export'){doExport();}
   else if(a==='import'){document.getElementById('import-input').click();}
   else if(a==='merge'){document.getElementById('merge-input').click();}
+  else if(a==='paste'){openPaste();}
+  else if(a==='paste-run'){
+    var ta=document.getElementById('paste-text');
+    var txt=ta?ta.value.trim():'';
+    if(!txt){if(ta)ta.focus();return;}
+    closeModal();
+    applyTransfer(txt);
+  }
   else if(a==='create'){
     var name=document.getElementById('ni-name').value.trim();
     if(!name){document.getElementById('ni-name').focus();return;}
