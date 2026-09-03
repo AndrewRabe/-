@@ -174,8 +174,8 @@ def build_text(state: dict, day: date) -> Optional[str]:
 def run(dry_run: bool = False) -> int:
     token = os.environ.get("YANDEX_TOKEN", "").strip()
     if not token:
-        log.error("Нет YANDEX_TOKEN — нечем читать данные реестра.")
-        return 2
+        log.warning("Нет YANDEX_TOKEN — нечем читать данные реестра. Пропускаю запуск — добавьте секрет YANDEX_TOKEN.")
+        return 0
     state = decode_chunks(Disk(token).listdir(SYNC_DIR))
     if state is None:
         log.warning("Данные реестра не прочитались (пусто или идёт запись).")

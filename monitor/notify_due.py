@@ -151,8 +151,8 @@ def deliver(disk: Disk, items: List[Dict[str, str]]) -> None:
 def run(dry_run: bool = False, at: str = None) -> int:
     token = os.environ.get("YANDEX_TOKEN", "").strip()
     if not token:
-        log.error("Нет YANDEX_TOKEN.")
-        return 2
+        log.warning("Нет YANDEX_TOKEN. Пропускаю запуск — добавьте секрет YANDEX_TOKEN.")
+        return 0
     disk = Disk(token)
     state = decode_chunks(disk.listdir(SYNC_DIR))
     if state is None:
