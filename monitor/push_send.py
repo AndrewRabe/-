@@ -76,11 +76,11 @@ def run(dry_run: bool = False) -> int:
     token = os.environ.get("YANDEX_TOKEN", "").strip()
     key = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
     if not token:
-        log.error("Нет YANDEX_TOKEN.")
-        return 2
+        log.warning("Нет YANDEX_TOKEN. Пропускаю запуск — добавьте секрет YANDEX_TOKEN.")
+        return 0
     if not key and not dry_run:
-        log.error("Нет VAPID_PRIVATE_KEY — нечем подписывать пуши.")
-        return 2
+        log.warning("Нет VAPID_PRIVATE_KEY — пуши не отправляю.")
+        return 0
 
     disk = Disk(token)
     state = decode_chunks(disk.listdir(SYNC_DIR))

@@ -224,8 +224,8 @@ def build_message(title: str, url: str, price: float, prev_min: Optional[float],
 def run(dry_run: bool = False, track: str = "card") -> int:
     token = os.environ.get("YANDEX_TOKEN", "").strip()
     if not token:
-        log.error("Нет YANDEX_TOKEN — нечем читать данные реестра.")
-        return 2
+        log.warning("Нет YANDEX_TOKEN — нечем читать данные реестра. Пропускаю запуск — добавьте секрет YANDEX_TOKEN.")
+        return 0
 
     disk = Disk(token)
     state = decode_chunks(disk.listdir(SYNC_DIR))
@@ -281,7 +281,10 @@ def run(dry_run: bool = False, track: str = "card") -> int:
         time.sleep(random.uniform(3, 7))  # вежливая пауза между товарами
 
     log.info("Готово: проверено %d, не удалось %d.", checked, failed)
-    return 1 if (failed and not checked) else 0
+    if failed and not checked:
+        log.warning("Ozon не отдал ни одной цены — обычно это блокировка запросов из дата-центра. "
+                    "Запустите монитор с домашнего компьютера.")
+    return 0
 
 
 def main() -> int:

@@ -8,6 +8,8 @@ on:
 jobs:
   remind:
     runs-on: ubuntu-latest
+    if: ${{ vars.SETUP_DONE == 'yes' }}
+
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +26,13 @@ jobs:
           APP_URL: ${{ vars.APP_URL }}
           TZ_OFFSET: '3'
         run: python push_send.py
+        continue-on-error: true
+
+      - name: Обновить ленту календаря
+        working-directory: monitor
+        env:
+          YANDEX_TOKEN: ${{ secrets.YANDEX_TOKEN }}
+        run: python ics_feed.py
         continue-on-error: true
 
       - name: Напоминание в Telegram

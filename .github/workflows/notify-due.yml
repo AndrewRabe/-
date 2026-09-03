@@ -12,6 +12,8 @@ concurrency:
 jobs:
   due:
     runs-on: ubuntu-latest
+    if: ${{ vars.SETUP_DONE == 'yes' }}
+
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
