@@ -509,6 +509,7 @@ var state=null, saveTimer=null, retryTimer=null, syncing=false, lastPull=0;
 var route={view:'all',item:null};
 var _t0=new Date(), calY=_t0.getFullYear(), calM=_t0.getMonth(), calSel=todayStr();
 var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null, settingsBackend=null;
+var delGroup=null;                         /* подтверждение «снести весь список задач» */
 var confirmPhoto=null, confirmPhotoTimer=null, newRepeat='', newDays=[], soldPeriod='all';
 var photoCache={};
 
@@ -1313,8 +1314,13 @@ function renderMain(){
       var opened=openCount(it.tasks);
       var head=isInbox(it)?'📥 '+esc(it.name)
         :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
-      h+='<div class="groupblock"><h3>'+head
-        +'<span class="wish-meta" style="margin-left:auto">'+(opened?opened+' открыто из '+list.length:'все '+list.length+' выполнены')+'</span></h3>'
+      var tail=delGroup===it.id
+        ?'<span class="wish-meta" style="margin-left:auto">Удалить все '+list.length+'?</span>'
+          +'<button class="x" title="Да, удалить весь список" data-a="del-group-yes" data-id="'+it.id+'">✕ да</button>'
+          +'<button class="x" title="Оставить" data-a="del-group-no">отмена</button>'
+        :'<span class="wish-meta" style="margin-left:auto">'+(opened?opened+' открыто из '+list.length:'все '+list.length+' выполнены')+'</span>'
+          +'<button class="x" title="Удалить весь список задач" data-a="del-group" data-id="'+it.id+'">✕ все</button>';
+      h+='<div class="groupblock"><h3>'+head+tail+'</h3>'
         +list.map(function(t){return rowHTML(it.id,'tasks',t,true,false,isInbox(it));}).join('')+'</div>';
     });
     if(!any)h+='<div class="empty">Задач пока нет — добавьте первую ниже.</div>';
@@ -2198,18 +2204,16 @@ function doExport(){
   setTimeout(function(){URL.revokeObjectURL(a.href);},5000);
 }
 function doImport(file){
-  var fr=new FileReader();
-  fr.onload=function(){
+  readAny(file,function(text){
     try{
-      var data=JSON.parse(fr.result);
+      var data=JSON.parse(text);
       if(!isRegistryCopy(data))throw new Error('bad');
       if(!Array.isArray(data.events))data.events=[];
       data.rev=Math.max(data.rev||0,(state.rev||0))+1;
       state=data;writeLocal();touch();renderAll();closeSettings();
       toast('Данные восстановлены: '+plural(state.items.length,['объект','объекта','объектов']));
     }catch(e){toast('Файл не похож на копию реестра');}
-  };
-  fr.readAsText(file);
+  },function(){toast('«Восстановить из файла» принимает только копию реестра. Для архива Takeout — «Добавить из копии»');});
 }
 function parseIcs(text){
   /* экспорт Google/Яндекс Календаря: берём будущие события; повторяющиеся
@@ -2280,6 +2284,7 @@ function parseIcs(text){
    Возвращает [{name, tasks:[{text,done,due,repeat}]}] */
 function parseTaskLists(text){
   var trimmed=String(text).trim();
+  if(looksBinary(trimmed))throw new Error('это не текст, а двоичный файл');
   if(trimmed.charAt(0)!=='{'&&trimmed.charAt(0)!=='['){
     var simple=[];
     trimmed.split(/\r?\n/).forEach(function(line){
@@ -2338,17 +2343,15 @@ function parseTaskLists(text){
 }
 var importLists=null;
 function doImportTasks(file){
-  var fr=new FileReader();
-  fr.onload=function(){
-    try{importLists=parseTaskLists(fr.result);}catch(e){toast('Не удалось разобрать файл задач');return;}
+  readAny(file,function(text){
+    try{importLists=parseTaskLists(text);}catch(e){toast('Не удалось разобрать файл задач: '+e.message);return;}
     if(!importLists||!importLists.length){toast('В файле не нашлось задач');return;}
     importLists.forEach(function(L){
       L.pick=L.tasks.some(function(t){return !t.done;});   /* списки с открытыми задачами отмечаем сразу */
       if(!L.target)L.target=INBOX;
     });
     closeSettings();openImportTasks();
-  };
-  fr.readAsText(file);
+  });
 }
 var impDone=false;
 function openImportTasks(){
@@ -2397,6 +2400,10 @@ function runImportTasks(){
   importLists=null;closeModal();
   if(added){route.view='tasks';route.item=null;}
   touch();renderAll();
+  if(pendingIcs){
+    var q=pendingIcs;pendingIcs=null;
+    setTimeout(function(){applyIcsList(q);},400);      /* календари из того же архива */
+  }
   if(added)toast('Перенесено задач: '+added+' из '+plural(lists,['списка','списков','списков']));
   else if(!lists)toast('Ни один список не отмечен — отметьте галочками, что переносить');
   else toast('В выбранных списках нет незакрытых задач — включите «переносить выполненные»');
@@ -2481,6 +2488,100 @@ function openPaste(){
   var ta=document.getElementById('paste-text');
   if(ta)ta.focus();
 }
+/* ── архивы Takeout: читаем .zip, не заставляя пользователя его распаковывать ── */
+function isZip(u8){return u8.length>3&&u8[0]===0x50&&u8[1]===0x4B&&(u8[2]===3||u8[2]===5||u8[2]===7);}
+/* оглавление архива: идём от конца, где лежит центральный каталог */
+function zipEntries(buf){
+  var dv=new DataView(buf),u8=new Uint8Array(buf),i,eo=-1;
+  var lim=Math.max(0,u8.length-66000);
+  for(i=u8.length-22;i>=lim;i--){if(dv.getUint32(i,true)===0x06054b50){eo=i;break;}}
+  if(eo<0)return null;
+  var n=dv.getUint16(eo+10,true),p=dv.getUint32(eo+16,true),out=[];
+  for(var k=0;k<n&&p+46<=u8.length;k++){
+    if(dv.getUint32(p,true)!==0x02014b50)break;
+    var nameLen=dv.getUint16(p+28,true);
+    out.push({
+      name:new TextDecoder('utf-8').decode(u8.subarray(p+46,p+46+nameLen)),
+      method:dv.getUint16(p+10,true),
+      csize:dv.getUint32(p+20,true),
+      lo:dv.getUint32(p+42,true)
+    });
+    p+=46+nameLen+dv.getUint16(p+30,true)+dv.getUint16(p+32,true);
+  }
+  return out;
+}
+/* достаём один файл: без сжатия или deflate силами самого браузера */
+function zipRead(buf,e){
+  var dv=new DataView(buf),u8=new Uint8Array(buf);
+  if(dv.getUint32(e.lo,true)!==0x04034b50)return Promise.reject(new Error('повреждён'));
+  var start=e.lo+30+dv.getUint16(e.lo+26,true)+dv.getUint16(e.lo+28,true);
+  var data=u8.subarray(start,start+e.csize);
+  if(e.method===0)return Promise.resolve(new TextDecoder('utf-8').decode(data));
+  if(e.method!==8)return Promise.reject(new Error('незнакомое сжатие'));
+  if(typeof DecompressionStream!=='function')return Promise.reject(new Error('браузер не умеет распаковывать — распакуйте архив сами'));
+  return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+}
+var pendingIcs=null;                       /* календари из архива — после задач */
+function applyIcsList(list){
+  var all=[];
+  list.forEach(function(txt){try{all=all.concat(parseIcs(txt));}catch(e){}});
+  if(!all.length){toast('В календарях архива не нашлось записей');return;}
+  evImport=all;closeSettings();openImportEvents();
+}
+function applyZip(buf){
+  var all;
+  try{all=zipEntries(buf);}catch(e){all=null;}
+  if(!all||!all.length){toast('Архив не читается — распакуйте его и выберите файл внутри');return;}
+  var isTasks=function(e){return /(^|\/)tasks\.json$/i.test(e.name);};
+  var tj=all.filter(isTasks)[0];
+  var ics=all.filter(function(e){return /\.ics$/i.test(e.name);}).slice(0,60);
+  var jsons=all.filter(function(e){return /\.json$/i.test(e.name)&&!isTasks(e);}).slice(0,10);
+  var jobs=[];
+  if(tj)jobs.push(zipRead(buf,tj).then(function(x){return {kind:'tasks',text:x};}));
+  ics.forEach(function(e){jobs.push(zipRead(buf,e).then(function(x){return {kind:'ics',text:x};}));});
+  if(!tj&&!ics.length)jsons.forEach(function(e){jobs.push(zipRead(buf,e).then(function(x){return {kind:'json',text:x};}));});
+  if(!jobs.length){toast('В архиве нет ни Tasks.json, ни календаря .ics');return;}
+  toast('Распаковываю архив…');
+  Promise.all(jobs).then(function(res){
+    var got=function(k){return res.filter(function(r){return r.kind===k;});};
+    var icsAll=got('ics').map(function(r){return r.text;});
+    pendingIcs=icsAll.length?icsAll:null;
+    var t=got('tasks')[0];
+    if(t){applyTransfer(t.text);return;}
+    if(pendingIcs){var q=pendingIcs;pendingIcs=null;applyIcsList(q);return;}
+    var found=null;
+    got('json').forEach(function(r){
+      if(found)return;
+      try{var d=JSON.parse(r.text);if(isRegistryCopy(d))found=d;}catch(e){}
+    });
+    if(found){mergeState(found);return;}
+    toast('В архиве не нашлось ни задач, ни календаря');
+  })['catch'](function(e){toast('Архив не распаковался: '+e.message);});
+}
+/* двоичный файл, прочитанный как текст, — источник мусорных задач */
+function looksBinary(text){
+  var s=String(text).slice(0,4000),bad=0;
+  for(var i=0;i<s.length;i++){
+    var c=s.charCodeAt(i);
+    if(c===0xFFFD||(c<32&&c!==9&&c!==10&&c!==13))bad++;
+  }
+  return s.length>0&&bad/s.length>0.02;
+}
+/* единая точка чтения: архив распаковываем, остальное отдаём текстом */
+function readAny(file,onText,onZip){
+  var fr=new FileReader();
+  fr.onerror=function(){toast('Файл не открылся — попробуйте «Вставить текстом»');};
+  fr.onload=function(){
+    var u8=new Uint8Array(fr.result);
+    if(isZip(u8)){(onZip||applyZip)(fr.result);return;}
+    var txt;
+    try{txt=new TextDecoder('utf-8').decode(u8);}
+    catch(e){toast('Файл не читается как текст');return;}
+    if(looksBinary(txt)){toast('Это не текстовый файл. Если это архив — выберите его целиком, я распакую сам');return;}
+    onText(txt);
+  };
+  fr.readAsArrayBuffer(file);
+}
 /* копия реестра: объекты с названием, а не списки задач Google */
 function isRegistryCopy(data){
   if(!data||!Array.isArray(data.items)||!data.items.length)return false;
@@ -2494,6 +2595,7 @@ function isRegistryCopy(data){
 }
 /* определяем формат и запускаем нужный перенос */
 function applyTransfer(text){
+  if(looksBinary(text)){toast('Это не текстовый файл. Если это архив Takeout — выберите сам .zip, я распакую');return;}
   if(/BEGIN:VCALENDAR/.test(text)){
     try{
       evImport=parseIcs(text);
@@ -2516,12 +2618,7 @@ function applyTransfer(text){
     closeSettings();openImportTasks();
   }catch(e){toast('Файл не разобрался: '+e.message);}
 }
-function doMerge(file){
-  var fr=new FileReader();
-  fr.onload=function(){applyTransfer(String(fr.result||''));};
-  fr.onerror=function(){toast('Файл не открылся — попробуйте «Вставить текстом»');};
-  fr.readAsText(file);
-}
+function doMerge(file){readAny(file,applyTransfer);}
 function mergeState(data){
   (function(){
     markUndo();
@@ -2637,22 +2734,20 @@ function mergeState(data){
   })();
 }
 function doImportEvents(file){
-  var fr=new FileReader();
-  fr.onload=function(){
+  readAny(file,function(text){
     try{
       var arr;
-      if(/BEGIN:VCALENDAR/.test(fr.result)){
-        arr=parseIcs(fr.result);
+      if(/BEGIN:VCALENDAR/.test(text)){
+        arr=parseIcs(text);
       }else{
-        var data=JSON.parse(fr.result);
+        var data=JSON.parse(text);
         arr=Array.isArray(data)?data:(data&&Array.isArray(data.events)?data.events:null);
       }
       if(!arr)throw new Error('bad');
       evImport=arr;
       closeSettings();openImportEvents();
     }catch(e){toast('Файл не похож на список мероприятий');}
-  };
-  fr.readAsText(file);
+  });
 }
 
 /* ══════════ выгрузка в календарь телефона ══════════ */
@@ -3275,6 +3370,18 @@ function onClick(e){
   if(!b)return;
   var a=b.dataset.a,id=b.dataset.id,it=id?find(id):null;
   if(a==='view'){route.view=b.dataset.v;renderNav();renderMain();}
+  else if(a==='del-group'){delGroup=id;renderMain();}
+  else if(a==='del-group-no'){delGroup=null;renderMain();}
+  else if(a==='del-group-yes'){
+    var gIt=find(id);
+    if(gIt){
+      markUndo();
+      var wasN=(gIt.tasks||[]).length;
+      gIt.tasks=[];
+      delGroup=null;touch();renderAll();
+      toast('Удалено задач: '+wasN,'Вернуть');
+    }
+  }
   else if(a==='open'){e.stopPropagation();route.item=id;confirmDel=false;editingInstr={};renderDetail();}
   else if(a==='close'){closeDetail();}
   else if(a==='new'){openModal();}
