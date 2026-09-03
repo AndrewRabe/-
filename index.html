@@ -874,6 +874,7 @@ function pull(quiet){
   }).catch(errChip);
 }
 function touch(){
+  pruneInbox();
   state.rev=(state.rev||0)+1;state.updatedAt=Date.now();
   writeLocal();
   if(!provider()){setChip('local');return;}
@@ -1191,6 +1192,26 @@ function svcState(c,sv){
 function catOf(it){return CATS[it&&it.cat]?it.cat:'stuff';}
 function find(id){for(var i=0;i<state.items.length;i++)if(state.items[i].id===id)return state.items[i];return null;}
 function visible(it){return it.status!=='archive'&&it.status!=='sold';}
+/* «Без объекта» — служебный объект для задач, которые ни к чему не привязаны:
+   в сетке объектов его нет, а задачи из него живут во всех сводках наравне */
+var INBOX='inbox';
+function isInbox(it){return !!it&&it.id===INBOX;}
+function notInbox(it){return !isInbox(it);}
+function inboxItem(){
+  var it=find(INBOX);
+  if(!it){
+    it={id:INBOX,name:'Без объекта',cat:'stuff',status:'active',price:'',notes:'',
+        specs:[],instructions:[],tasks:[],questions:[],plans:[],photos:[]};
+    state.items.push(it);
+  }
+  return it;
+}
+/* опустевший «Без объекта» убираем, чтобы не мозолил глаза */
+function pruneInbox(){
+  var it=find(INBOX);
+  if(it&&!(it.tasks||[]).length&&!(it.plans||[]).length&&!(it.questions||[]).length)
+    state.items=state.items.filter(notInbox);
+}
 function matches(it){
   if(!query)return true;
   var q=query.toLowerCase();
@@ -1207,13 +1228,14 @@ function nv(view,label,count,icon){
 }
 function renderNav(){
   var act=state.items.filter(visible);
+  var objs=act.filter(notInbox);
   var tasksN=0,plansN=0;
   act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);});
   var saleN=state.items.filter(function(i){return i.status==='sale';}).length;
   var archN=state.items.filter(function(i){return i.status==='archive';}).length;
-  var h='<div class="navgroup"><h4>Разделы</h4>'+nv('all','Всё',act.length);
+  var h='<div class="navgroup"><h4>Разделы</h4>'+nv('all','Всё',objs.length);
   Object.keys(CATS).forEach(function(c){
-    h+=nv('cat:'+c,CATS[c].label,act.filter(function(i){return i.cat===c;}).length,CATS[c].icon);
+    h+=nv('cat:'+c,CATS[c].label,objs.filter(function(i){return i.cat===c;}).length,CATS[c].icon);
   });
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
@@ -1266,7 +1288,7 @@ function renderMain(){
   function title(t,n){return '<div class="viewtitle"><h2>'+t+'</h2>'+(n!=null?'<span class="n mono">'+n+'</span>':'')+'</div>';}
   if(v==='all'||v.indexOf('cat:')===0){
     var cat=v==='all'?null:v.slice(4);
-    var list=state.items.filter(visible).filter(function(i){return !cat||i.cat===cat;}).filter(matches);
+    var list=state.items.filter(visible).filter(notInbox).filter(function(i){return !cat||i.cat===cat;}).filter(matches);
     h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Все объекты',list.length)
       +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':'Здесь пока пусто. Нажмите <b>«+ Объект»</b> вверху, чтобы добавить первый.');
   }else if(v==='sale'||v==='archive'){
@@ -1278,7 +1300,10 @@ function renderMain(){
     var allOpen=0;
     state.items.filter(visible).forEach(function(it){allOpen+=openCount(it.tasks);});
     h=title('☑ Все задачи',allOpen);var any=false;
-    state.items.filter(visible).forEach(function(it){
+    var withTasks=state.items.filter(visible).slice().sort(function(a,b){
+      return (isInbox(b)?1:0)-(isInbox(a)?1:0);       /* «Без объекта» наверх */
+    });
+    withTasks.forEach(function(it){
       var list=(it.tasks||[]).slice();
       if(!list.length)return;any=true;
       list.sort(function(a,b){
@@ -1286,12 +1311,14 @@ function renderMain(){
         return (a.due||'~')<(b.due||'~')?-1:1;
       });
       var opened=openCount(it.tasks);
-      h+='<div class="groupblock"><h3>'+CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>'
+      var head=isInbox(it)?'📥 '+esc(it.name)
+        :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
+      h+='<div class="groupblock"><h3>'+head
         +'<span class="wish-meta" style="margin-left:auto">'+(opened?opened+' открыто из '+list.length:'все '+list.length+' выполнены')+'</span></h3>'
-        +list.map(function(t){return rowHTML(it.id,'tasks',t,true);}).join('')+'</div>';
+        +list.map(function(t){return rowHTML(it.id,'tasks',t,true,false,isInbox(it));}).join('')+'</div>';
     });
     if(!any)h+='<div class="empty">Задач пока нет — добавьте первую ниже.</div>';
-    if(state.items.filter(visible).length)
+    {
       h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
         +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
         +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
@@ -1299,9 +1326,10 @@ function renderMain(){
         +'<select id="sum-task-repeat" title="Повтор">'
         +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
         +'</select>'
-        +itemSelect('sum-task-item','Объект')
+        +itemSelect('sum-task-item','Объект',true)
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
-        +'<p class="hint">Задача попадёт в карточку выбранного объекта, а со сроком — ещё и в календарь.</p></div>';
+        +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
+    }
   }else if(v==='cal'){
     var tasksBy={};
     state.items.filter(visible).forEach(function(it){
@@ -1329,7 +1357,8 @@ function renderMain(){
       timed.sort(function(a,b){return a.time<b.time?-1:1;});
       chips=chips.concat(timed);
       dayBd.forEach(function(bd){chips.push({cls:'b',time:'',text:'🎂 '+bd.name,go:{kind:'bd',id:bd.id}});});
-      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:e.t.time||'',text:e.t.text,go:{kind:'item',id:e.it.id}});});
+      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:e.t.time||'',text:e.t.text,
+        go:isInbox(e.it)?{kind:'view',id:'tasks'}:{kind:'item',id:e.it.id}});});
 
       chips=chips.concat(untimed);
       for(k=0;k<Math.min((tasksBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot t"></span>';
@@ -1361,9 +1390,11 @@ function renderMain(){
       h+='<div class="row"><span class="ev-time">🎂</span><span class="t">'+esc(bd.name)+(age!=null?' — '+plural(age,['год','года','лет']):'')+'</span></div>';
     });
     selT.forEach(function(e){
+      var inb=isInbox(e.it);
       h+='<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+e.t.id+'">'
         +(e.t.time?'<span class="ev-time">'+esc(e.t.time)+'</span>':'')
-        +'<span class="t" data-a="open" data-id="'+e.it.id+'" style="cursor:pointer">'+esc(e.t.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
+        +(inb?'<span class="t">'+esc(e.t.text)+'</span><span class="src">без объекта</span>'
+             :'<span class="t" data-a="open" data-id="'+e.it.id+'" style="cursor:pointer">'+esc(e.t.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>')
         +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+e.t.id+'">✕</button></div>';
     });
     selE.forEach(function(ev){
@@ -1380,7 +1411,7 @@ function renderMain(){
       +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'"'+(newRepeat===r?' selected':'')+'>'+REPEATS[r]+'</option>';}).join('')
       +'</select>'
       +'<select id="ev-item" aria-label="Связать с объектом"><option value="">Без объекта</option>'
-      +state.items.filter(visible).map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
+      +state.items.filter(visible).filter(notInbox).map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
       +'</select></div>'
       +(newRepeat==='weekly'?'<div class="dowpick">'+DOW.map(function(d,i){
           return '<button class="'+(newDays.indexOf(i)>=0?'on':'')+'" data-a="ev-dow" data-v="'+i+'">'+d+'</button>';
@@ -1560,7 +1591,7 @@ function renderMain(){
     }
     var bl=block('Докупить',buy)+block('Улучшить и сделать',imp);
     h+=bl||'<div class="empty">Списки пусты — добавьте первую строку ниже.</div>';
-    if(state.items.filter(visible).length)
+    if(state.items.filter(visible).filter(notInbox).length)
       h+='<div class="groupblock"><h3>Новая строка</h3><div class="addrow">'
         +'<input type="text" id="sum-plan" placeholder="Что докупить или улучшить…">'
         +itemSelect('sum-plan-item','Объект')
@@ -1573,10 +1604,20 @@ function renderMain(){
   m.innerHTML=h;
   if(refocus){var rf=document.getElementById(refocus);if(rf){rf.focus();refocus=null;}}
 }
-function itemSelect(id,label){
-  var list=state.items.filter(visible);
-  if(!list.length)return '';
+function itemSelect(id,label,withInbox){
+  var list=state.items.filter(visible).filter(notInbox);
+  if(!list.length&&!withInbox)return '';
   return '<select id="'+id+'" aria-label="'+label+'">'
+    +(withInbox?'<option value="'+INBOX+'">📥 Без объекта</option>':'')
+    +list.map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
+    +'</select>';
+}
+/* выпадающий список «привязать к объекту» для задачи без объекта */
+function moveSelect(itemId,taskId){
+  var list=state.items.filter(visible).filter(notInbox);
+  if(!list.length)return '';
+  return '<select class="duein" data-f="task-move" data-id="'+itemId+'" data-sub="'+taskId+'" title="Привязать к объекту">'
+    +'<option value="">к объекту…</option>'
     +list.map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
     +'</select>';
 }
@@ -1585,7 +1626,7 @@ function insTitle(it,insId){
   (it.instructions||[]).forEach(function(ins){if(ins.id===insId)found=ins.title||'Инструкция';});
   return found;
 }
-function rowHTML(itemId,kind,x,delBtn,dueEdit){
+function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove){
   var h='<div class="row'+(x.done?' done':'')+'">'
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
@@ -1605,6 +1646,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit){
       +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'"'+((x.repeat||'')===r?' selected':'')+'>'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
       +'</select>';
   }
+  if(canMove&&kind==='tasks')h+=moveSelect(itemId,x.id);
   if(delBtn)h+='<button class="x" title="Удалить" data-a="del-sub" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">✕</button>';
   return h+'</div>';
 }
@@ -1613,6 +1655,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit){
 function renderDetail(){
   var d=document.getElementById('detail'),s=document.getElementById('scrim');
   var it=route.item?find(route.item):null;
+  if(isInbox(it))it=null;                  /* у задач без объекта карточки нет */
   if(!it){d.hidden=true;s.hidden=true;return;}
   d.hidden=false;s.hidden=false;
   var h='<div class="d-head"><span class="ic">'+CATS[catOf(it)].icon+'</span>'
@@ -2055,7 +2098,7 @@ function openSettings(){
     +'</div>'
     +'<p class="hint">'+(d0.total?('Сейчас требует внимания: '+plural(d0.total,['дело','дела','дел'])+'.'):'Сейчас всё закрыто — напоминать не о чем.')+'</p>'
     +(function(){
-      var cnt={items:state.items.length,tasks:0,events:(state.events||[]).length,bd:(state.birthdays||[]).length,places:placesAll().length};
+      var cnt={items:state.items.filter(notInbox).length,tasks:0,events:(state.events||[]).length,bd:(state.birthdays||[]).length,places:placesAll().length};
       state.items.forEach(function(it){cnt.tasks+=(it.tasks||[]).length;});
       return '<h4>Что сейчас в реестре</h4>'
         +'<p class="hint">Объектов: '+cnt.items+' · задач: '+cnt.tasks+' · мероприятий: '+cnt.events
@@ -2299,10 +2342,9 @@ function doImportTasks(file){
   fr.onload=function(){
     try{importLists=parseTaskLists(fr.result);}catch(e){toast('Не удалось разобрать файл задач');return;}
     if(!importLists||!importLists.length){toast('В файле не нашлось задач');return;}
-    var vis0=state.items.filter(visible);
     importLists.forEach(function(L){
       L.pick=L.tasks.some(function(t){return !t.done;});   /* списки с открытыми задачами отмечаем сразу */
-      if(!L.target&&vis0.length)L.target=vis0[0].id;
+      if(!L.target)L.target=INBOX;
     });
     closeSettings();openImportTasks();
   };
@@ -2311,7 +2353,7 @@ function doImportTasks(file){
 var impDone=false;
 function openImportTasks(){
   var m=document.getElementById('modal');
-  var vis=state.items.filter(visible);
+  var vis=state.items.filter(visible).filter(notInbox);
   m.hidden=false;
   var rows=importLists.map(function(L,i){
     var open=L.tasks.filter(function(t){return !t.done;}).length;
@@ -2320,11 +2362,12 @@ function openImportTasks(){
       +'<span class="t">'+esc(L.name)+' <span class="wish-meta">— '+open+' открытых из '+L.tasks.length
       +(reps?', повторяющихся '+reps:'')+'</span></span>'
       +'<select data-f="imp-target" data-k="'+i+'" style="max-width:170px">'
+      +'<option value="'+INBOX+'"'+(L.target===INBOX?' selected':'')+'>📥 Без объекта</option>'
       +vis.map(function(it){return '<option value="'+it.id+'"'+(L.target===it.id?' selected':'')+'>'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
       +'</select></div>';
   }).join('');
   m.innerHTML='<div class="modal-box"><h3>Что перенести из файла</h3>'
-    +'<p class="hint">Отметьте списки и выберите, к какому объекту их привязать. Повторяющиеся задачи Google станут периодическими.</p>'
+    +'<p class="hint">Отметьте списки, которые нужно перенести. Привязывать к объекту необязательно — с «Без объекта» задачи просто лягут в общий список, привязать можно потом. Повторяющиеся задачи Google станут периодическими.</p>'
     +rows
     +'<label style="display:flex;gap:7px;align-items:center;margin:10px 0 0;color:var(--ink);font-size:13.5px">'
     +'<input type="checkbox" '+(impDone?'checked ':'')+'data-f="imp-done">Переносить и выполненные</label>'
@@ -2335,7 +2378,7 @@ function runImportTasks(){
   var added=0,lists=0;
   (importLists||[]).forEach(function(L){
     if(!L.pick)return;
-    var target=find(L.target)||state.items.filter(visible)[0];
+    var target=(L.target===INBOX)?inboxItem():(find(L.target)||inboxItem());
     if(!target)return;
     lists++;
     target.tasks=target.tasks||[];
@@ -2466,10 +2509,9 @@ function applyTransfer(text){
   try{
     importLists=parseTaskLists(text);
     if(!importLists.length){toast('В файле не нашлось ни задач, ни объектов');return;}
-    var vis0=state.items.filter(visible);
     importLists.forEach(function(L){
       L.pick=L.tasks.some(function(t){return !t.done;});
-      if(!L.target&&vis0.length)L.target=vis0[0].id;
+      if(!L.target)L.target=INBOX;
     });
     closeSettings();openImportTasks();
   }catch(e){toast('Файл не разобрался: '+e.message);}
@@ -3421,8 +3463,8 @@ function onClick(e){
     var sti=document.getElementById('sum-task'),std=document.getElementById('sum-task-due'),sto=document.getElementById('sum-task-item');
     var stext=sti?sti.value.trim():'';
     if(!stext){if(sti)sti.focus();return;}
-    var sit=find(sto&&sto.value);
-    if(!sit)return;
+    var sit=(sto&&sto.value===INBOX)?inboxItem():find(sto&&sto.value);
+    if(!sit)sit=inboxItem();
     var entry={id:uid(),text:stext,done:false};
     if(std&&std.value)entry.due=std.value;
     var stt=document.getElementById('sum-task-time');
@@ -3483,6 +3525,8 @@ function onClick(e){
       renderMain();renderDetail();
     }else if(kind==='bd'){
       route.view='bd';renderNav();renderMain();
+    }else if(kind==='view'){
+      route.view=id;renderNav();renderMain();
     }else{renderMain();}
   }
   else if(a==='add-event'){
@@ -3736,6 +3780,22 @@ function onChange(e){
   if(f==='ev-years'){evOpts.pastYears=parseInt(t.value,10)||1;openImportEvents();return;}
   if(f==='imp-pick'){if(importLists)importLists[t.dataset.k].pick=t.checked;return;}
   if(f==='imp-target'){if(importLists)importLists[t.dataset.k].target=t.value;return;}
+  if(f==='task-move'){
+    var mFrom=find(t.dataset.id),mTo=find(t.value);
+    if(!mFrom||!mTo)return;
+    if(!(mFrom.tasks||[]).some(function(x){return x.id===t.dataset.sub;}))return;
+    markUndo();                            /* снимок до переноса */
+    var moved=null;
+    mFrom.tasks=mFrom.tasks.filter(function(x){
+      if(x.id!==t.dataset.sub)return true;
+      moved=x;return false;
+    });
+    delete moved.insId;                    /* инструкция осталась у прежнего объекта */
+    mTo.tasks=mTo.tasks||[];mTo.tasks.push(moved);
+    touch();renderAll();
+    toast('Задача привязана к «'+mTo.name+'»','Отменить');
+    return;
+  }
   if(f==='imp-done'){impDone=t.checked;return;}
   if(f==='xopt'){exportOpts[t.dataset.k]=t.checked;openExport();return;}
   if(f.indexOf('set-')===0){settings()[f.slice(4)]=t.value;touch();return;}
