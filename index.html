@@ -355,6 +355,7 @@ details.help li{margin-bottom:4px}
   <div class="wordmark">Домашний <span class="leaf">реестр</span></div>
   <input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off">
   <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
+  <button class="iconbtn" data-a="note-new" title="Быстрая заметка">📝</button>
   <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
   <button class="btn" data-a="new">+ Объект</button>
 </header>
@@ -510,6 +511,7 @@ var route={view:'all',item:null};
 var _t0=new Date(), calY=_t0.getFullYear(), calM=_t0.getMonth(), calSel=todayStr();
 var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null, settingsBackend=null;
 var delGroup=null;                         /* подтверждение «снести весь список задач» */
+var noteDest={};                           /* выбранное «куда» для каждой заметки */
 var confirmPhoto=null, confirmPhotoTimer=null, newRepeat='', newDays=[], soldPeriod='all';
 var photoCache={};
 
@@ -859,6 +861,7 @@ function adoptRemote(remote){
   if(!state.wishes)state.wishes=[];
   if(!state.birthdays)state.birthdays=[];
   if(!state.places)state.places=[];
+  if(!state.notes)state.notes=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   writeLocal();renderAll();
 }
@@ -1196,6 +1199,27 @@ function visible(it){return it.status!=='archive'&&it.status!=='sold';}
 /* «Без объекта» — служебный объект для задач, которые ни к чему не привязаны:
    в сетке объектов его нет, а задачи из него живут во всех сводках наравне */
 var INBOX='inbox';
+var NOTE_DEST={task:'☑ в задачи',question:'❓ в вопросы',buy:'🛒 докупить',
+               improve:'🛠 улучшить',wish:'⭐ в желания',note:'📄 в заметки объекта'};
+function addNote(text){
+  var t=String(text||'').trim();
+  if(!t)return false;
+  state.notes=state.notes||[];
+  state.notes.push({id:uid(),text:t,at:todayStr()});
+  touch();return true;
+}
+function openNote(){
+  closeSettings();
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  m.innerHTML='<div class="modal-box"><h3>Быстрая заметка</h3>'
+    +'<p class="hint">Запишите как есть — разложить по задачам, покупкам или желаниям можно позже, в разделе «Заметки».</p>'
+    +'<textarea id="note-text" style="min-height:110px" placeholder="Что пришло в голову…"></textarea>'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<button class="btn" data-a="note-save">Записать</button></div></div>';
+  var ta=document.getElementById('note-text');
+  if(ta)ta.focus();
+}
 function isInbox(it){return !!it&&it.id===INBOX;}
 function notInbox(it){return !isInbox(it);}
 function inboxItem(){
@@ -1242,6 +1266,7 @@ function renderNav(){
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
   att+=eventsOn(today).length+bdsOn(today).length;
   h+='</div><div class="navgroup"><h4>Сводки</h4>'
+    +nv('notes','Заметки',(state.notes||[]).length,'📝')
     +nv('tasks','Задачи',tasksN,'☑')
     +nv('cal','Календарь',att,'📅')
     +nv('bd','Дни рождения',(state.birthdays||[]).length,'🎂')
@@ -1336,6 +1361,35 @@ function renderMain(){
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
         +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
     }
+  }else if(v==='notes'){
+    var ns=(state.notes||[]).slice().reverse();          /* свежие сверху */
+    h=title('📝 Заметки',ns.length)
+      +'<p class="hint" style="margin:0 0 12px">Место для мыслей на бегу: записали одной строкой, разобрали потом. Кнопка 📝 в шапке работает из любого раздела.</p>'
+      +'<div class="addrow" style="margin:0 0 14px"><input type="text" id="note-new" placeholder="Что записать…">'
+      +'<button class="btn" data-a="add-note">Записать</button></div>';
+    if(!ns.length)h+='<div class="empty">Пока пусто. Запишите первую мысль — потом решите, куда её девать.</div>';
+    ns.forEach(function(n){
+      var d=noteDest[n.id]||{},to=d.to||'task';
+      var objs=state.items.filter(visible).filter(notInbox);
+      var needObj=to!=='wish';
+      h+='<div class="groupblock" style="padding:12px 14px">'
+        +'<div class="row" style="align-items:flex-start">'
+        +'<textarea data-f="note-text" data-id="'+n.id+'" rows="2" style="flex:1;min-height:52px">'+esc(n.text||'')+'</textarea>'
+        +'<button class="x" title="Удалить заметку" data-a="del-note" data-id="'+n.id+'">✕</button></div>'
+        +'<div class="addrow" style="margin-top:8px;flex-wrap:wrap">'
+        +(n.at?'<span class="wish-meta">'+fmtDue(n.at)+'</span>':'')
+        +'<select data-f="note-dest" data-id="'+n.id+'">'
+        +Object.keys(NOTE_DEST).map(function(k){return '<option value="'+k+'"'+(to===k?' selected':'')+'>'+NOTE_DEST[k]+'</option>';}).join('')
+        +'</select>'
+        +(needObj
+           ?'<select data-f="note-item" data-id="'+n.id+'">'
+             +(to==='task'?'<option value="'+INBOX+'"'+(d.item===INBOX?' selected':'')+'>📥 Без объекта</option>':'')
+             +objs.map(function(it){return '<option value="'+it.id+'"'+(d.item===it.id?' selected':'')+'>'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
+             +'</select>'
+           :'')
+        +'<button class="btn ghost" data-a="note-go" data-id="'+n.id+'">Распределить</button>'
+        +'</div></div>';
+    });
   }else if(v==='cal'){
     var tasksBy={};
     state.items.filter(visible).forEach(function(it){
@@ -2104,11 +2158,11 @@ function openSettings(){
     +'</div>'
     +'<p class="hint">'+(d0.total?('Сейчас требует внимания: '+plural(d0.total,['дело','дела','дел'])+'.'):'Сейчас всё закрыто — напоминать не о чем.')+'</p>'
     +(function(){
-      var cnt={items:state.items.filter(notInbox).length,tasks:0,events:(state.events||[]).length,bd:(state.birthdays||[]).length,places:placesAll().length};
+      var cnt={items:state.items.filter(notInbox).length,tasks:0,events:(state.events||[]).length,bd:(state.birthdays||[]).length,places:placesAll().length,notes:(state.notes||[]).length};
       state.items.forEach(function(it){cnt.tasks+=(it.tasks||[]).length;});
       return '<h4>Что сейчас в реестре</h4>'
         +'<p class="hint">Объектов: '+cnt.items+' · задач: '+cnt.tasks+' · мероприятий: '+cnt.events
-        +' · дней рождения: '+cnt.bd+' · мест хранения: '+cnt.places+'. Версия данных: '+(state.rev||0)+'.</p>';
+        +' · дней рождения: '+cnt.bd+' · мест хранения: '+cnt.places+' · заметок: '+cnt.notes+'. Версия данных: '+(state.rev||0)+'.</p>';
     })()
     +'<h4>Резервная копия</h4>'
     +'<div class="btnrow"><button class="btn ghost" data-a="export">Скачать копию данных</button>'
@@ -2622,7 +2676,7 @@ function doMerge(file){readAny(file,applyTransfer);}
 function mergeState(data){
   (function(){
     markUndo();
-    var added={items:0,tasks:0,plans:0,instr:0,events:0,bd:0,wishes:0,places:0};
+    var added={items:0,tasks:0,plans:0,instr:0,events:0,bd:0,wishes:0,places:0,notes:0};
 
     /* места: по названию и пути */
     var placeMap={};
@@ -2709,6 +2763,16 @@ function mergeState(data){
       state.birthdays.push({id:uid(),name:b.name,date:b.date,noAge:!!b.noAge});added.bd++;
     });
 
+    var haveN={};
+    (state.notes||[]).forEach(function(x){haveN[x.text]=1;});
+    (data.notes||[]).forEach(function(x){
+      if(!x||!x.text||haveN[x.text])return;
+      haveN[x.text]=1;
+      state.notes=state.notes||[];
+      state.notes.push({id:uid(),text:x.text,at:x.at||todayStr()});
+      added.notes++;
+    });
+
     var haveW={};
     (state.wishes||[]).forEach(function(w){haveW[w.title]=1;});
     (data.wishes||[]).forEach(function(w){
@@ -2730,6 +2794,7 @@ function mergeState(data){
     if(added.bd)parts.push('дней рождения '+added.bd);
     if(added.wishes)parts.push('желаний '+added.wishes);
     if(added.places)parts.push('мест '+added.places);
+    if(added.notes)parts.push('заметок '+added.notes);
     toast(parts.length?('Добавлено: '+parts.join(', ')):'Всё из файла уже есть','Отменить');
   })();
 }
@@ -3370,6 +3435,59 @@ function onClick(e){
   if(!b)return;
   var a=b.dataset.a,id=b.dataset.id,it=id?find(id):null;
   if(a==='view'){route.view=b.dataset.v;renderNav();renderMain();}
+  else if(a==='note-new'){openNote();}
+  else if(a==='note-save'){
+    var nta=document.getElementById('note-text');
+    if(!addNote(nta&&nta.value)){if(nta)nta.focus();return;}
+    closeModal();renderAll();
+    toast('Записано. Разобрать — в разделе «Заметки»');
+  }
+  else if(a==='add-note'){
+    var nin=document.getElementById('note-new');
+    if(!addNote(nin&&nin.value)){if(nin)nin.focus();return;}
+    refocus='note-new';renderAll();
+  }
+  else if(a==='del-note'){
+    markUndo();
+    state.notes=(state.notes||[]).filter(function(x){return x.id!==id;});
+    delete noteDest[id];
+    touch();renderAll();toast('Заметка удалена','Вернуть');
+  }
+  else if(a==='note-go'){
+    var nn=(state.notes||[]).filter(function(x){return x.id===id;})[0];
+    if(!nn)return;
+    var txt=String(nn.text||'').trim();
+    if(!txt){toast('Заметка пустая — напишите текст или удалите её');return;}
+    var dd=noteDest[id]||{},to=dd.to||'task',tgt=null;
+    if(to!=='wish'){
+      tgt=(to==='task'&&(dd.item===INBOX||!dd.item))?inboxItem():find(dd.item);
+      if(!tgt&&to==='task')tgt=inboxItem();
+      if(!tgt){
+        var firstObj=state.items.filter(visible).filter(notInbox)[0];
+        if(!firstObj){toast('Для этого нужен объект — заведите его кнопкой «+ Объект»');return;}
+        tgt=firstObj;
+      }
+    }
+    markUndo();
+    var where='';
+    if(to==='task'){tgt.tasks=tgt.tasks||[];tgt.tasks.push({id:uid(),text:txt,done:false});where='задачи · '+tgt.name;}
+    else if(to==='question'){tgt.questions=tgt.questions||[];tgt.questions.push({id:uid(),text:txt,done:false});where='вопросы · '+tgt.name;}
+    else if(to==='buy'||to==='improve'){
+      tgt.plans=tgt.plans||[];
+      tgt.plans.push({id:uid(),text:txt,done:false,kind:to==='buy'?'buy':'improve'});
+      where=(to==='buy'?'покупки · ':'улучшения · ')+tgt.name;
+    }
+    else if(to==='wish'){
+      state.wishes=state.wishes||[];
+      state.wishes.push({id:uid(),title:txt,target:'',last:'',min:'',links:[],status:'active'});
+      where='желания';
+    }
+    else if(to==='note'){tgt.notes=(tgt.notes?tgt.notes+'\n':'')+txt;where='заметки · '+tgt.name;}
+    state.notes=(state.notes||[]).filter(function(x){return x.id!==id;});
+    delete noteDest[id];
+    touch();renderAll();
+    toast('Ушло в '+where,'Отменить');
+  }
   else if(a==='del-group'){delGroup=id;renderMain();}
   else if(a==='del-group-no'){delGroup=null;renderMain();}
   else if(a==='del-group-yes'){
@@ -3887,6 +4005,19 @@ function onChange(e){
   if(f==='ev-years'){evOpts.pastYears=parseInt(t.value,10)||1;openImportEvents();return;}
   if(f==='imp-pick'){if(importLists)importLists[t.dataset.k].pick=t.checked;return;}
   if(f==='imp-target'){if(importLists)importLists[t.dataset.k].target=t.value;return;}
+  if(f==='note-text'){
+    (state.notes||[]).forEach(function(x){if(x.id===t.dataset.id)x.text=t.value;});
+    touch();return;
+  }
+  if(f==='note-dest'){
+    noteDest[t.dataset.id]=noteDest[t.dataset.id]||{};
+    noteDest[t.dataset.id].to=t.value;
+    renderMain();return;
+  }
+  if(f==='note-item'){
+    noteDest[t.dataset.id]=noteDest[t.dataset.id]||{};
+    noteDest[t.dataset.id].item=t.value;return;
+  }
   if(f==='task-move'){
     var mFrom=find(t.dataset.id),mTo=find(t.value);
     if(!mFrom||!mTo)return;
@@ -4035,6 +4166,7 @@ function init(){
   if(!state.wishes)state.wishes=[];
   if(!state.birthdays)state.birthdays=[];
   if(!state.places)state.places=[];
+  if(!state.notes)state.notes=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
   document.addEventListener('click',onClick);
