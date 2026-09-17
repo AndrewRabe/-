@@ -233,6 +233,10 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .cal-dot.i{background:#3E8E9E}
 .cal-dot.w{background:#C2703E}
 .chip.w{border-left-color:#C2703E}
+.cal-dot.f{background:#3F8F5B}
+.chip.f{border-left-color:#3F8F5B}
+.cal-dot.n{background:#B08A2E}
+.chip.n{border-left-color:#B08A2E}
 .quick{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .quick button{border:1px solid var(--line);background:var(--card);color:var(--ink);
   border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
@@ -1259,6 +1263,17 @@ function dayNav(){
     +'<input type="date" value="'+esc(diaryDay)+'" data-f="diary-date"></div>';
 }
 function mealsOn(ds){return (state.meals||[]).filter(function(m){return m.date===ds;});}
+/* короткая строка для календаря: первые блюда дня и сколько ещё */
+function mealsBrief(ds){
+  var all=[];
+  Object.keys(SLOTS).forEach(function(sl){
+    mealsOn(ds).forEach(function(m){if(m.slot===sl)all=all.concat(m.dishes||[]);});
+  });
+  if(!all.length)return '';
+  var head=all.slice(0,2).join(', ');
+  return '🍽 '+head+(all.length>2?' +'+(all.length-2):'');
+}
+function notesOn(ds){return (state.notes||[]).filter(function(n){return n.at===ds;});}
 function workoutsOn(ds){return (state.workouts||[]).filter(function(w){return w.date===ds;});}
 function addNote(text){
   var t=String(text||'').trim();
@@ -1551,19 +1566,26 @@ function renderMain(){
           go:ev.itemId?{kind:'item',id:ev.itemId}:{kind:'day',id:ds}});
       });
       timed.sort(function(a,b){return a.time<b.time?-1:1;});
+      /* сначала то, что нужно сделать, и только потом записи дневников */
       chips=chips.concat(timed);
+      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:e.t.time||'',text:e.t.text,
+        go:isInbox(e.it)?{kind:'view',id:'tasks'}:{kind:'item',id:e.it.id}});});
       dayBd.forEach(function(bd){chips.push({cls:'b',time:'',text:'🎂 '+bd.name,go:{kind:'bd',id:bd.id}});});
+      chips=chips.concat(untimed);
       workoutsOn(ds).forEach(function(w){
         chips.push({cls:'w',time:'',text:'🏋 '+(w.kind||'Тренировка')+(w.dur?' · '+w.dur+' мин':''),go:{kind:'diary',id:ds}});
       });
-      (tasksBy[ds]||[]).forEach(function(e){chips.push({cls:'t',time:e.t.time||'',text:e.t.text,
-        go:isInbox(e.it)?{kind:'view',id:'tasks'}:{kind:'item',id:e.it.id}});});
-
-      chips=chips.concat(untimed);
+      var brief=mealsBrief(ds);
+      if(brief)chips.push({cls:'f',time:'',text:brief,go:{kind:'food',id:ds}});
+      notesOn(ds).forEach(function(n){
+        chips.push({cls:'n',time:'',text:'📝 '+n.text,go:{kind:'view',id:'notes'}});
+      });
       for(k=0;k<Math.min((tasksBy[ds]||[]).length,3);k++)dots+='<span class="cal-dot t"></span>';
       for(k=0;k<Math.min(dayEv.length,3);k++)dots+='<span class="cal-dot '+(dayEv[k].repeat?'r':'e')+'"></span>';
       for(k=0;k<Math.min(dayBd.length,2);k++)dots+='<span class="cal-dot b"></span>';
       for(k=0;k<Math.min(workoutsOn(ds).length,2);k++)dots+='<span class="cal-dot w"></span>';
+      if(brief)dots+='<span class="cal-dot f"></span>';
+      for(k=0;k<Math.min(notesOn(ds).length,2);k++)dots+='<span class="cal-dot n"></span>';
 
       var LIM=4,list='';
       chips.slice(0,LIM).forEach(function(c){
@@ -1580,6 +1602,7 @@ function renderMain(){
     }
     h+='</div><div class="cal-legend"><span><span class="cal-dot t"></span>задачи</span><span><span class="cal-dot e"></span>мероприятия</span>'
       +'<span><span class="cal-dot r"></span>повторяющиеся</span><span><span class="cal-dot b"></span>дни рождения</span><span><span class="cal-dot w"></span>тренировки</span>'
+      +'<span><span class="cal-dot f"></span>питание</span><span><span class="cal-dot n"></span>заметки</span>'
       +'</div>';
     var selT=(tasksBy[calSel]||[]);
     var selE=eventsOn(calSel).slice().sort(function(a,b){return (a.time||'')<(b.time||'')?-1:1;});
@@ -1604,7 +1627,29 @@ function renderMain(){
         +(lit?'<span class="src" data-a="open" data-id="'+lit.id+'">'+esc(lit.name)+'</span>':'')
         +'<button class="x" title="'+(ev.repeat?'Удалить все повторы':'Удалить')+'" data-a="del-event" data-sub="'+ev.id+'">✕</button></div>';
     });
-    if(!selT.length&&!selE.length&&!selB.length)h+='<p class="hint">На этот день ничего не запланировано.</p>';
+    var selW=workoutsOn(calSel),selM=mealsOn(calSel),selN=notesOn(calSel);
+    selW.forEach(function(w){
+      var exs=(w.exs||[]).map(function(x){return x.name;}).filter(Boolean);
+      h+='<div class="row"><span class="ev-time">🏋</span>'
+        +'<span class="t" data-a="w-day" data-v="'+calSel+'" style="cursor:pointer">'+esc(w.kind||'Тренировка')
+        +(w.dur?' · '+esc(w.dur)+' мин':'')+(exs.length?' — '+esc(exs.join(', ')):'')+'</span>'
+        +'<span class="src" data-a="w-day" data-v="'+calSel+'">дневник</span></div>';
+    });
+    Object.keys(SLOTS).forEach(function(sl){
+      var m=selM.filter(function(x){return x.slot===sl;})[0];
+      if(!m||!(m.dishes||[]).length)return;
+      h+='<div class="row"><span class="ev-time">🍽</span>'
+        +'<span class="t" data-a="food-day" data-v="'+calSel+'" style="cursor:pointer">'
+        +SLOTS[sl]+' — '+esc(m.dishes.join(', '))+'</span>'
+        +'<span class="src" data-a="food-day" data-v="'+calSel+'">дневник</span></div>';
+    });
+    selN.forEach(function(n){
+      h+='<div class="row"><span class="ev-time">📝</span>'
+        +'<span class="t" data-a="view" data-v="notes" style="cursor:pointer">'+esc(n.text)+'</span>'
+        +'<span class="src" data-a="view" data-v="notes">заметки</span></div>';
+    });
+    if(!selT.length&&!selE.length&&!selB.length&&!selW.length&&!selM.length&&!selN.length)
+      h+='<p class="hint">На этот день ничего не запланировано и не записано.</p>';
     h+='<div class="addrow"><input type="text" id="ev-title" placeholder="Новое мероприятие в этот день…"><input type="time" id="ev-time">'
       +'<button class="btn ghost" data-a="add-event">Добавить</button></div>'
       +'<div class="addrow"><select id="ev-repeat" aria-label="Повтор">'
@@ -3622,7 +3667,8 @@ function onClick(e){
     diaryDay=dv==='0'?todayStr():shiftDay(diaryDay,parseInt(dv,10));
     renderMain();
   }
-  else if(a==='w-day'){diaryDay=b.dataset.v;renderMain();}
+  else if(a==='w-day'){diaryDay=b.dataset.v;route.view='workouts';renderNav();renderMain();}
+  else if(a==='food-day'){diaryDay=b.dataset.v;route.view='food';renderNav();renderMain();}
   else if(a==='add-dish'||a==='quick-dish'){
     var slot=b.dataset.v,nm;
     if(a==='quick-dish')nm=b.dataset.n;
@@ -4012,6 +4058,8 @@ function onClick(e){
       route.view=id;renderNav();renderMain();
     }else if(kind==='diary'){
       diaryDay=id;route.view='workouts';renderNav();renderMain();
+    }else if(kind==='food'){
+      diaryDay=id;route.view='food';renderNav();renderMain();
     }else{renderMain();}
   }
   else if(a==='add-event'){
