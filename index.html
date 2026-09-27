@@ -40,7 +40,7 @@ textarea{width:100%;resize:vertical;min-height:74px}
 
 /* ── шапка ── */
 header.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--bg);border-bottom:1px solid var(--line)}
-.wordmark{font-family:'PT Serif',Georgia,serif;font-weight:700;font-size:19px;letter-spacing:.2px;white-space:nowrap}
+.wordmark{font-family:'PT Serif',Georgia,serif;font-weight:700;font-size:19px;letter-spacing:.2px;white-space:nowrap;cursor:pointer}
 .wordmark .leaf{color:var(--accent)}
 #q{flex:1;max-width:340px;min-width:0}
 #chip{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:8px;padding:4px 6px}
@@ -238,6 +238,22 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .chip.f{border-left-color:#3F8F5B}
 .cal-dot.n{background:#B08A2E}
 .chip.n{border-left-color:#B08A2E}
+/* ── главная ── */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:10px;margin:0 0 6px}
+.tile{display:flex;align-items:center;gap:10px;padding:12px 13px;background:var(--surface);
+  border:1px solid var(--line);border-radius:12px;cursor:pointer;text-align:left;color:var(--ink);width:100%}
+.tile:hover{border-color:var(--accent);background:var(--accent-soft)}
+.tile .ic{font-size:20px;flex:none}
+.tile .lb{flex:1;min-width:0;font-size:14px;font-weight:600;overflow-wrap:break-word;hyphens:none}
+.tile .n{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tile:hover .n{color:var(--accent)}
+.homegroup h4{margin:16px 0 8px;font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--muted)}
+.qbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 4px}
+.qbar button{display:flex;align-items:center;gap:7px;padding:9px 14px;border-radius:99px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:13.5px;font-weight:600}
+.qbar button:hover{border-color:var(--accent);color:var(--accent)}
+.today-empty{color:var(--muted);font-size:13.5px;padding:4px 0}
 .quick{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .quick button{border:1px solid var(--line);background:var(--card);color:var(--ink);
   border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
@@ -375,7 +391,7 @@ details.help li{margin-bottom:4px}
 <body>
 
 <header class="top">
-  <div class="wordmark">Домашний <span class="leaf">реестр</span></div>
+  <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Домашний <span class="leaf">реестр</span></div>
   <input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off">
   <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
   <button class="iconbtn" data-a="note-new" title="Быстрая заметка">📝</button>
@@ -530,7 +546,7 @@ var SEED={rev:1,updatedAt:0,items:[
 ]};
 
 var state=null, saveTimer=null, retryTimer=null, syncing=false, lastPull=0;
-var route={view:'all',item:null};
+var route={view:'home',item:null};
 var _t0=new Date(), calY=_t0.getFullYear(), calM=_t0.getMonth(), calSel=todayStr();
 var query='', editingInstr={}, newPlanKind='buy', confirmDel=false, refocus=null, settingsBackend=null;
 var delGroup=null;                         /* подтверждение «снести весь список задач» */
@@ -1339,36 +1355,47 @@ function nv(view,label,count,icon){
   return '<button class="navitem'+on+'" data-a="view" data-v="'+view+'">'+(icon?icon+' ':'')+label
     +(count!=null?'<span class="n mono">'+count+'</span>':'')+'</button>';
 }
-function renderNav(){
-  var act=state.items.filter(visible);
-  var objs=act.filter(notInbox);
+/* один перечень разделов: из него строится и боковое меню, и плитки главной */
+function navSections(){
+  var act=state.items.filter(visible),objs=act.filter(notInbox);
   var tasksN=0,plansN=0;
   act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);});
-  var saleN=state.items.filter(function(i){return i.status==='sale';}).length;
-  var archN=state.items.filter(function(i){return i.status==='archive';}).length;
-  var h='<div class="navgroup"><h4>Разделы</h4>'+nv('all','Всё',objs.length);
-  Object.keys(CATS).forEach(function(c){
-    h+=nv('cat:'+c,CATS[c].label,objs.filter(function(i){return i.cat===c;}).length,CATS[c].icon);
-  });
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
   att+=eventsOn(today).length+bdsOn(today).length;
-  h+='</div><div class="navgroup"><h4>Сводки</h4>'
-    +nv('notes','Заметки',(state.notes||[]).length,'📝')
-    +nv('tasks','Задачи',tasksN,'☑')
-    +nv('cal','Календарь',att,'📅')
-    +nv('bd','Дни рождения',(state.birthdays||[]).length,'🎂')
-    +nv('places','Хранение',placesAll().length,'📦')
-    +nv('plans','Покупки и планы',plansN,'🛒')
-    +nv('wish','Желания',(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length,'⭐')
-    +'</div><div class="navgroup"><h4>Дневники</h4>'
-    +nv('workouts','Тренировки',workoutsOn(todayStr()).length||null,'🏋')
-    +nv('food','Питание',mealsOn(todayStr()).reduce(function(a,m){return a+(m.dishes||[]).length;},0)||null,'🍽')
-    +'</div><div class="navgroup"><h4>Статусы</h4>'
-    +nv('sale','На продажу',saleN,'💰')
-    +nv('sold','Продано',soldItems().length,'✅')
-    +nv('archive','Архив',archN,'🗄')
-    +'</div>';
+  var cats=[{v:'all',label:'Всё',n:objs.length,icon:'🗂'}];
+  Object.keys(CATS).forEach(function(c){
+    cats.push({v:'cat:'+c,label:CATS[c].label,n:objs.filter(function(i){return i.cat===c;}).length,icon:CATS[c].icon});
+  });
+  return [
+    {title:'Разделы',items:cats},
+    {title:'Сводки',items:[
+      {v:'notes',label:'Заметки',n:(state.notes||[]).length,icon:'📝'},
+      {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
+      {v:'cal',label:'Календарь',n:att,icon:'📅'},
+      {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
+      {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
+      {v:'plans',label:'Покупки и планы',n:plansN,icon:'🛒'},
+      {v:'wish',label:'Желания',n:(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length,icon:'⭐'}
+    ]},
+    {title:'Дневники',items:[
+      {v:'workouts',label:'Тренировки',n:workoutsOn(today).length||null,icon:'🏋'},
+      {v:'food',label:'Питание',n:mealsOn(today).reduce(function(a,m){return a+(m.dishes||[]).length;},0)||null,icon:'🍽'}
+    ]},
+    {title:'Статусы',items:[
+      {v:'sale',label:'На продажу',n:state.items.filter(function(i){return i.status==='sale';}).length,icon:'💰'},
+      {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'},
+      {v:'archive',label:'Архив',n:state.items.filter(function(i){return i.status==='archive';}).length,icon:'🗄'}
+    ]}
+  ];
+}
+function renderNav(){
+  var h='<div class="navgroup">'+nv('home','Главная',null,'🏠')+'</div>';
+  navSections().forEach(function(g){
+    h+='<div class="navgroup"><h4>'+g.title+'</h4>'
+      +g.items.map(function(x){return nv(x.v,x.label,x.n,x.icon);}).join('')
+      +'</div>';
+  });
   document.getElementById('nav').innerHTML=h;
 }
 
@@ -1403,7 +1430,60 @@ function gridHTML(list,emptyMsg){
 function renderMain(){
   var m=document.getElementById('main'),h='',v=route.view;
   function title(t,n){return '<div class="viewtitle"><h2>'+t+'</h2>'+(n!=null?'<span class="n mono">'+n+'</span>':'')+'</div>';}
-  if(v==='all'||v.indexOf('cat:')===0){
+  if(v==='home'){
+    var tod=todayStr(),due=[],evT=eventsOn(tod),bdSoon=[];
+    state.items.filter(visible).forEach(function(it){
+      (it.tasks||[]).forEach(function(t){
+        if(!t.done&&t.due&&t.due<=tod)due.push({it:it,t:t});
+      });
+    });
+    due.sort(function(a,b){return (a.t.due||'')<(b.t.due||'')?-1:1;});
+    (state.birthdays||[]).forEach(function(bd){
+      var w=bdWhen(bd);
+      if(w.days<=7)bdSoon.push({bd:bd,w:w});
+    });
+    bdSoon.sort(function(a,b){return a.w.days-b.w.days;});
+    h='<div class="viewtitle"><h2>🏠 '+fmtDayTitle(tod)+'</h2></div>'
+      +'<div class="qbar">'
+      +'<button data-a="note-new">📝 Заметка</button>'
+      +'<button data-a="go" data-v="tasks">☑ Задача</button>'
+      +'<button data-a="go" data-v="food">🍽 Что съел</button>'
+      +'<button data-a="go" data-v="workouts">🏋 Тренировка</button>'
+      +'<button data-a="new">➕ Объект</button>'
+      +'<button data-a="go" data-v="cal">📅 Календарь</button></div>';
+
+    h+='<div class="groupblock"><h3>Сегодня'
+      +(due.length+evT.length+bdSoon.length
+         ?'<span class="wish-meta" style="margin-left:auto">'+(due.length+evT.length+bdSoon.length)+'</span>':'')
+      +'</h3>';
+    evT.slice().sort(function(a,b){return (a.time||'')<(b.time||'')?-1:1;}).forEach(function(ev){
+      h+='<div class="row"><span class="ev-time">'+(ev.time?esc(ev.time):'📅')+'</span>'
+        +'<span class="t">'+esc(ev.title)+'</span></div>';
+    });
+    due.slice(0,7).forEach(function(e){
+      h+=rowHTML(e.it.id,'tasks',e.t,false);
+    });
+    if(due.length>7)
+      h+='<div class="row"><span class="t"><button data-a="go" data-v="tasks">…и ещё '+(due.length-7)+'</button></span></div>';
+    bdSoon.forEach(function(x){
+      h+='<div class="row"><span class="ev-time">🎂</span>'
+        +'<span class="t" data-a="go" data-v="bd" style="cursor:pointer">'+esc(x.bd.name)+'</span>'
+        +'<span class="due '+(x.w.days===0?'today':'')+'">'+esc(x.w.text)+'</span></div>';
+    });
+    if(!due.length&&!evT.length&&!bdSoon.length)
+      h+='<p class="today-empty">На сегодня ничего не назначено. Свободный день.</p>';
+    h+='</div>';
+
+    navSections().forEach(function(g){
+      h+='<div class="homegroup"><h4>'+g.title+'</h4><div class="tiles">'
+        +g.items.map(function(x){
+          return '<button class="tile" data-a="go" data-v="'+x.v+'">'
+            +'<span class="ic">'+x.icon+'</span><span class="lb">'+esc(x.label)+'</span>'
+            +(x.n?'<span class="n mono">'+x.n+'</span>':'')+'</button>';
+        }).join('')
+        +'</div></div>';
+    });
+  }else if(v==='all'||v.indexOf('cat:')===0){
     var cat=v==='all'?null:v.slice(4);
     var list=state.items.filter(visible).filter(notInbox).filter(function(i){return !cat||i.cat===cat;}).filter(matches);
     h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Все объекты',list.length)
@@ -3771,6 +3851,7 @@ function onClick(e){
     w3.exs.splice(parseInt(b.dataset.i,10),1);
     touch();renderAll();toast('Убрано','Вернуть');
   }
+  else if(a==='go'){route.view=b.dataset.v;route.item=null;renderNav();renderMain();window.scrollTo(0,0);}
   else if(a==='note-new'){openNote();}
   else if(a==='note-save'){
     var nta=document.getElementById('note-text');
