@@ -238,6 +238,29 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .chip.f{border-left-color:#3F8F5B}
 .cal-dot.n{background:#B08A2E}
 .chip.n{border-left-color:#B08A2E}
+/* ── план квартиры ── */
+.plan-wrap{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.plan-grid{position:absolute;inset:0;
+  background-image:linear-gradient(to right,var(--line) 1px,transparent 1px),
+                   linear-gradient(to bottom,var(--line) 1px,transparent 1px);
+  opacity:.5;pointer-events:none}
+.plan-room{position:absolute;border:1.5px solid var(--accent);border-radius:8px;
+  background:var(--accent-soft);cursor:move;display:flex;align-items:flex-start;padding:5px 7px;overflow:hidden}
+.plan-room.sel{box-shadow:0 0 0 2px var(--accent)}
+.plan-room .nm{font-size:12px;font-weight:600;color:var(--ink);pointer-events:none;overflow-wrap:anywhere;line-height:1.25}
+.plan-room .rz{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;
+  background:var(--accent);opacity:.55;border-radius:8px 0 8px 0}
+.plan-pin{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;
+  padding:4px 9px;border-radius:99px;background:var(--card);border:1.5px solid var(--line);
+  font-size:12px;font-weight:600;color:var(--ink);cursor:move;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.plan-pin.place{border-color:#C2703E}
+.plan-pin.thing{border-color:#3E8E9E}
+.plan-pin.sel{box-shadow:0 0 0 2px var(--accent)}
+.plan-pin .cnt{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.plan-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.plan-hint{font-size:12px;color:var(--muted);margin:8px 0 0}
+.plan-sel{margin-top:10px}
 /* ── главная ── */
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:10px;margin:0 0 6px}
 .tile{display:flex;align-items:center;gap:10px;padding:12px 13px;background:var(--surface);
@@ -256,7 +279,8 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .today-empty{color:var(--muted);font-size:13.5px;padding:4px 0}
 .quick{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .quick button{border:1px solid var(--line);background:var(--card);color:var(--ink);
-  border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer}
+  border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer;
+  max-width:100%;overflow-wrap:anywhere;text-align:left}
 .quick button:hover{border-color:var(--accent);color:var(--accent)}
 .quick .lbl{align-self:center;font-size:12px;color:var(--muted);margin-right:2px}
 .daynav{display:flex;align-items:center;gap:8px;margin:0 0 14px;flex-wrap:wrap}
@@ -1132,6 +1156,149 @@ function placePath(id,sep){
 function placeChildren(parentId){
   return placesAll().filter(function(pl){return (pl.parentId||'')===(parentId||'');});
 }
+/* ══════════ план жилья ══════════ */
+function planPoint(wrap,e){
+  var r=wrap.getBoundingClientRect(),it=find(wrap.dataset.plan);
+  if(!it||!r.width||!r.height)return null;
+  var pl=planOf(it);
+  return {x:(e.clientX-r.left)/r.width*pl.w, y:(e.clientY-r.top)/r.height*pl.h, pl:pl, it:it};
+}
+function planClamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function planDown(e){
+  var room=e.target.closest?e.target.closest('[data-plan-room]'):null;
+  var pin=e.target.closest?e.target.closest('[data-plan-pin]'):null;
+  var rz=e.target.closest?e.target.closest('[data-plan-resize]'):null;
+  var node=rz||pin||room;
+  if(!node)return;
+  var wrap=node.closest('.plan-wrap');
+  var pt=planPoint(wrap,e);
+  if(!pt)return;
+  e.preventDefault();
+  if(rz){
+    var rr=null;pt.pl.rooms.forEach(function(x){if(x.id===rz.dataset.planResize)rr=x;});
+    if(!rr)return;
+    planDrag={mode:'resize',wrap:wrap,it:pt.it,obj:rr,node:room||rz.closest('[data-plan-room]'),moved:false};
+  }else if(pin){
+    var pp=null;pt.pl.pins.forEach(function(x){if(x.id===pin.dataset.planPin)pp=x;});
+    if(!pp)return;
+    planDrag={mode:'pin',wrap:wrap,it:pt.it,obj:pp,node:pin,dx:pp.x-pt.x,dy:pp.y-pt.y,moved:false};
+  }else{
+    var r2=null;pt.pl.rooms.forEach(function(x){if(x.id===room.dataset.planRoom)r2=x;});
+    if(!r2)return;
+    planDrag={mode:'room',wrap:wrap,it:pt.it,obj:r2,node:room,dx:r2.x-pt.x,dy:r2.y-pt.y,moved:false};
+  }
+  if(node.setPointerCapture&&e.pointerId!=null){try{node.setPointerCapture(e.pointerId);}catch(err){}}
+}
+function planMove(e){
+  if(!planDrag)return;
+  var pt=planPoint(planDrag.wrap,e);
+  if(!pt)return;
+  var pl=pt.pl,o=planDrag.obj,n=planDrag.node;
+  planDrag.moved=true;
+  if(planDrag.mode==='resize'){
+    o.w=planClamp(Math.round(pt.x-o.x),1,pl.w-o.x);
+    o.h=planClamp(Math.round(pt.y-o.y),1,pl.h-o.y);
+    n.style.width=(o.w/pl.w*100)+'%';n.style.height=(o.h/pl.h*100)+'%';
+  }else if(planDrag.mode==='room'){
+    o.x=planClamp(Math.round(pt.x+planDrag.dx),0,pl.w-o.w);
+    o.y=planClamp(Math.round(pt.y+planDrag.dy),0,pl.h-o.h);
+    n.style.left=(o.x/pl.w*100)+'%';n.style.top=(o.y/pl.h*100)+'%';
+  }else{
+    o.x=planClamp(Math.round((pt.x+planDrag.dx)*2)/2,0,pl.w);   /* пины липнут к полуклетке */
+    o.y=planClamp(Math.round((pt.y+planDrag.dy)*2)/2,0,pl.h);
+    n.style.left=(o.x/pl.w*100)+'%';n.style.top=(o.y/pl.h*100)+'%';
+  }
+}
+function planUp(){
+  if(!planDrag)return;
+  var d=planDrag;planDrag=null;
+  planSel={item:d.it.id,kind:d.mode==='pin'?'pin':'room',id:d.obj.id};
+  if(d.moved)touch();                      /* клик без перетаскивания ничего не меняет */
+  renderDetail();
+}
+var planSel=null, planDrag=null;
+function planOf(it){
+  if(!it.plan)it.plan={w:16,h:12,rooms:[],pins:[]};
+  var pl=it.plan;
+  pl.w=pl.w||16;pl.h=pl.h||12;
+  pl.rooms=pl.rooms||[];pl.pins=pl.pins||[];
+  return pl;
+}
+function pinLabel(pin){
+  if(pin.kind==='place'){
+    var p=placeById(pin.refId);
+    return p?{icon:'📦',name:p.name,cnt:itemsInPlace(p.id,true).length}:null;
+  }
+  var it=find(pin.refId);
+  return it?{icon:CATS[catOf(it)].icon,name:it.name,cnt:0}:null;
+}
+function planHTML(it){
+  var pl=planOf(it);
+  var cellPct=function(v,total){return (v/total*100)+'%';};
+  var h='<section class="d-sec"><h3>План квартиры</h3>'
+    +'<div class="plan-tools">'
+    +'<button class="btn ghost" data-a="plan-room-add" data-id="'+it.id+'">+ Комната</button>'
+    +'<button class="btn ghost" data-a="plan-pin-add" data-id="'+it.id+'">+ Метка</button>'
+    +'<span class="wish-meta">размер</span>'
+    +'<input type="number" min="6" max="40" value="'+pl.w+'" data-f="plan-w" data-id="'+it.id+'" style="width:64px">'
+    +'<span class="wish-meta">×</span>'
+    +'<input type="number" min="6" max="40" value="'+pl.h+'" data-f="plan-h" data-id="'+it.id+'" style="width:64px">'
+    +'</div>'
+    +'<div class="plan-wrap" id="plan-'+it.id+'" data-plan="'+it.id+'" style="aspect-ratio:'+pl.w+'/'+pl.h+'">'
+    +'<div class="plan-grid" style="background-size:'+(100/pl.w)+'% '+(100/pl.h)+'%"></div>';
+  pl.rooms.forEach(function(r){
+    h+='<div class="plan-room'+(planSel&&planSel.kind==='room'&&planSel.id===r.id?' sel':'')+'"'
+      +' data-plan-room="'+r.id+'" data-id="'+it.id+'"'
+      +' style="left:'+cellPct(r.x,pl.w)+';top:'+cellPct(r.y,pl.h)+';width:'+cellPct(r.w,pl.w)+';height:'+cellPct(r.h,pl.h)+'">'
+      +'<span class="nm">'+esc(r.name||'Комната')+'</span>'
+      +'<span class="rz" data-plan-resize="'+r.id+'" data-id="'+it.id+'"></span></div>';
+  });
+  pl.pins.forEach(function(pin){
+    var lb=pinLabel(pin);
+    if(!lb)return;
+    h+='<div class="plan-pin '+(pin.kind==='place'?'place':'thing')+(planSel&&planSel.kind==='pin'&&planSel.id===pin.id?' sel':'')+'"'
+      +' data-plan-pin="'+pin.id+'" data-id="'+it.id+'"'
+      +' style="left:'+cellPct(pin.x,pl.w)+';top:'+cellPct(pin.y,pl.h)+'">'
+      +lb.icon+' <span>'+esc(lb.name)+'</span>'
+      +(lb.cnt?'<span class="cnt">'+lb.cnt+'</span>':'')+'</div>';
+  });
+  h+='</div>';
+  h+=planSelHTML(it);
+  h+='<p class="plan-hint">Нарисуйте комнаты и разложите по ним метки: 📦 место хранения — показывает, сколько вещей внутри, а метка вещи отмечает крупную технику. Всё двигается перетаскиванием, угол комнаты меняет размер.</p>';
+  return h+'</section>';
+}
+/* панель выбранного: что это и что внутри */
+function planSelHTML(it){
+  if(!planSel||planSel.item!==it.id)return '';
+  var pl=planOf(it);
+  if(planSel.kind==='room'){
+    var r=null;pl.rooms.forEach(function(x){if(x.id===planSel.id)r=x;});
+    if(!r)return '';
+    return '<div class="groupblock plan-sel"><h3>Комната'
+      +'<button class="x" title="Убрать с плана" data-a="plan-room-del" data-id="'+it.id+'" data-sub="'+r.id+'">✕</button></h3>'
+      +'<div class="addrow"><input type="text" value="'+esc(r.name||'')+'" data-f="plan-room-name" data-id="'+it.id+'" data-sub="'+r.id+'" placeholder="Название комнаты"></div></div>';
+  }
+  var pin=null;pl.pins.forEach(function(x){if(x.id===planSel.id)pin=x;});
+  if(!pin)return '';
+  var lb=pinLabel(pin);
+  if(!lb)return '';
+  var h='<div class="groupblock plan-sel"><h3>'+lb.icon+' '+esc(lb.name)
+    +'<button class="x" title="Убрать с плана" data-a="plan-pin-del" data-id="'+it.id+'" data-sub="'+pin.id+'">✕</button></h3>';
+  if(pin.kind==='place'){
+    var inside=itemsInPlace(pin.refId,true);
+    h+=inside.length
+      ? inside.map(function(x){
+          return '<div class="row"><span class="t" data-a="open" data-id="'+x.id+'" style="cursor:pointer">'
+            +CATS[catOf(x)].icon+' '+esc(x.name)+'</span>'
+            +(x.spot?'<span class="src">'+esc(x.spot)+'</span>':'')+'</div>';
+        }).join('')
+      : '<p class="hint">Здесь пока ничего не хранится. Привяжите вещь к этому месту в её карточке, раздел «Где лежит».</p>';
+    h+='<div class="addrow"><button class="btn ghost" data-a="go" data-v="places">Открыть «Хранение»</button></div>';
+  }else{
+    h+='<div class="addrow"><button class="btn ghost" data-a="open" data-id="'+pin.refId+'">Открыть карточку</button></div>';
+  }
+  return h+'</div>';
+}
 function itemsInPlace(id,deep){
   var ids={};ids[id]=1;
   if(deep){
@@ -1311,6 +1478,29 @@ function addNote(text){
   state.notes=state.notes||[];
   state.notes.push({id:uid(),text:t,at:todayStr()});
   touch();return true;
+}
+function openPinPick(itemId){
+  var it=find(itemId);if(!it)return;
+  var pl=planOf(it);
+  var onPlan={};
+  pl.pins.forEach(function(x){onPlan[x.kind+':'+x.refId]=1;});
+  var places=placesAll().filter(function(p){return !onPlan['place:'+p.id];});
+  var things=state.items.filter(visible).filter(notInbox)
+    .filter(function(x){return x.id!==it.id&&!onPlan['item:'+x.id];});
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  function row(kind,id2,icon,name,note){
+    return '<div class="row"><span class="t">'+icon+' '+esc(name)+(note?' <span class="src">'+esc(note)+'</span>':'')+'</span>'
+      +'<button class="btn ghost" data-a="plan-pin-put" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+id2+'">На план</button></div>';
+  }
+  m.innerHTML='<div class="modal-box"><h3>Что поставить на план</h3>'
+    +'<p class="hint">Место хранения покажет, сколько вещей внутри. Метка вещи пригодится для крупного — техника, мебель.</p>'
+    +(places.length?'<h4 style="margin:10px 0 4px;font-size:12px;color:var(--muted)">МЕСТА ХРАНЕНИЯ</h4>'
+        +places.map(function(p){return row('place',p.id,'📦',p.name,p.parentId?placePath(p.parentId):'');}).join(''):'')
+    +(things.length?'<h4 style="margin:12px 0 4px;font-size:12px;color:var(--muted)">ВЕЩИ</h4>'
+        +things.slice(0,60).map(function(x){return row('item',x.id,CATS[catOf(x)].icon,x.name,'');}).join(''):'')
+    +(!places.length&&!things.length?'<p class="hint">Всё уже на плане. Места хранения заводятся в разделе «Хранение».</p>':'')
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Закрыть</button></div></div>';
 }
 function openNote(){
   closeSettings();
@@ -2143,6 +2333,7 @@ function renderDetail(){
       h+='<p class="hint">Выберите тип — появятся нужные поля: для съёмного плата и договор, для своего площадь и документы.</p>';
     }
     h+='</section>';
+    h+=planHTML(it);
   }
 
   if(catOf(it)==='car'){
@@ -2997,7 +3188,14 @@ function mergeState(data){
              specs:[],instructions:[],tasks:[],questions:[],plans:[],photos:[]};
         if(src.placeId&&placeMap[src.placeId])dst.placeId=placeMap[src.placeId];
         if(src.spot)dst.spot=src.spot;
+        if(src.home)dst.home=src.home;
         state.items.push(dst);added.items++;
+      }
+      if(src.plan&&!dst.plan&&Array.isArray(src.plan.rooms)){
+        /* план переносим только целиком и только в объект, где его ещё нет */
+        dst.plan={w:src.plan.w||16,h:src.plan.h||12,
+          rooms:(src.plan.rooms||[]).map(function(r){return {id:uid(),name:r.name||'',x:r.x||0,y:r.y||0,w:r.w||1,h:r.h||1};}),
+          pins:[]};
       }
       ['tasks','plans','questions'].forEach(function(kind){
         dst[kind]=dst[kind]||[];
@@ -3851,6 +4049,49 @@ function onClick(e){
     w3.exs.splice(parseInt(b.dataset.i,10),1);
     touch();renderAll();toast('Убрано','Вернуть');
   }
+  else if(a==='plan-room-add'){
+    var pit=find(id);if(!pit)return;
+    var ppl=planOf(pit);
+    markUndo();
+    var nr={id:uid(),name:'Комната',x:1,y:1,w:Math.min(5,ppl.w-1),h:Math.min(4,ppl.h-1)};
+    /* новую комнату ставим на первое свободное место, чтобы не ложилась на старую */
+    for(var gy=0;gy+nr.h<=ppl.h;gy++){
+      var free=false;
+      for(var gx=0;gx+nr.w<=ppl.w;gx++){
+        var busy=ppl.rooms.some(function(r){return gx<r.x+r.w&&gx+nr.w>r.x&&gy<r.y+r.h&&gy+nr.h>r.y;});
+        if(!busy){nr.x=gx;nr.y=gy;free=true;break;}
+      }
+      if(free)break;
+    }
+    ppl.rooms.push(nr);
+    planSel={item:pit.id,kind:'room',id:nr.id};
+    touch();renderDetail();
+  }
+  else if(a==='plan-room-del'){
+    var dit=find(id);if(!dit)return;
+    markUndo();
+    planOf(dit).rooms=planOf(dit).rooms.filter(function(r){return r.id!==b.dataset.sub;});
+    planSel=null;touch();renderDetail();toast('Комната убрана','Вернуть');
+  }
+  else if(a==='plan-pin-del'){
+    var pit2=find(id);if(!pit2)return;
+    markUndo();
+    planOf(pit2).pins=planOf(pit2).pins.filter(function(x){return x.id!==b.dataset.sub;});
+    planSel=null;touch();renderDetail();toast('Метка убрана с плана','Вернуть');
+  }
+  else if(a==='plan-pin-add'){openPinPick(id);}
+  else if(a==='plan-pin-put'){
+    var tit=find(id);if(!tit)return;
+    var ppl2=planOf(tit);
+    var kind=b.dataset.kind,ref=b.dataset.sub;
+    if(ppl2.pins.some(function(x){return x.kind===kind&&x.refId===ref;})){toast('Эта метка уже на плане');return;}
+    markUndo();
+    var np={id:uid(),kind:kind,refId:ref,x:Math.round(ppl2.w/2),y:Math.round(ppl2.h/2)};
+    ppl2.pins.push(np);
+    planSel={item:tit.id,kind:'pin',id:np.id};
+    closeModal();touch();renderDetail();
+    toast('Метка добавлена — перетащите её на нужное место');
+  }
   else if(a==='go'){route.view=b.dataset.v;route.item=null;renderNav();renderMain();window.scrollTo(0,0);}
   else if(a==='note-new'){openNote();}
   else if(a==='note-save'){
@@ -4427,6 +4668,25 @@ function onChange(e){
   if(f==='imp-pick'){if(importLists)importLists[t.dataset.k].pick=t.checked;return;}
   if(f==='imp-target'){if(importLists)importLists[t.dataset.k].target=t.value;return;}
   if(f==='diary-date'){if(t.value){diaryDay=t.value;renderMain();}return;}
+  if(f==='plan-w'||f==='plan-h'){
+    var pit3=find(t.dataset.id);if(!pit3)return;
+    var ppl3=planOf(pit3),val=Math.max(6,Math.min(40,parseInt(t.value,10)||16));
+    if(f==='plan-w')ppl3.w=val;else ppl3.h=val;
+    ppl3.rooms.forEach(function(r){          /* комнаты не должны вылезать за новые границы */
+      r.w=Math.min(r.w,ppl3.w);r.h=Math.min(r.h,ppl3.h);
+      r.x=Math.min(r.x,ppl3.w-r.w);r.y=Math.min(r.y,ppl3.h-r.h);
+    });
+    ppl3.pins.forEach(function(x){x.x=Math.min(x.x,ppl3.w);x.y=Math.min(x.y,ppl3.h);});
+    touch();renderDetail();return;
+  }
+  if(f==='plan-room-name'){
+    var pit4=find(t.dataset.id);if(!pit4)return;
+    planOf(pit4).rooms.forEach(function(r){if(r.id===t.dataset.sub)r.name=t.value;});
+    /* подпись на плане обновляем на месте, чтобы не потерять курсор в поле */
+    var lbl=document.querySelector('[data-plan-room="'+t.dataset.sub+'"] .nm');
+    if(lbl)lbl.textContent=t.value||'Комната';
+    touch();return;
+  }
   if(f==='meal-time'){
     var mt=mealsOn(diaryDay).filter(function(x){return x.slot===t.dataset.v;})[0];
     if(mt){mt.time=t.value;touch();renderMain();}
@@ -4619,6 +4879,10 @@ function init(){
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
   document.addEventListener('click',onClick);
+  document.addEventListener('pointerdown',planDown);
+  document.addEventListener('pointermove',planMove);
+  document.addEventListener('pointerup',planUp);
+  document.addEventListener('pointercancel',planUp);
   document.addEventListener('change',onChange);
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape'){closeViewer();closeDetail();closeModal();closeSettings();}
