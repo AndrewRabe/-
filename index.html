@@ -1912,7 +1912,6 @@ function renderMain(){
   }else if(v==='food'){
     var day=mealsOn(diaryDay),top=bookTop('dishes',10);
     h=title('🍽 Питание',day.reduce(function(a,m){return a+(m.dishes||[]).length;},0))
-      +'<p class="hint" style="margin:0 0 12px">Что ели — без калорий и подсчётов. Блюда запоминаются: со второго раза их можно добавить одним нажатием.</p>'
       +dayNav()+bookList('dishes','dishbook');
     /* показываем только то, что было: любого приёма может не быть, перекусов — несколько.
        Пустой блок появляется по кнопке «＋» и исчезает после добавления блюда */
@@ -1962,7 +1961,6 @@ function renderMain(){
     var lastPlace={place:lastW?lastW.place:'home',gym:lastW&&lastW.place==='gym'?(lastW.gym||''):''};
     var dayW=workoutsOn(diaryDay),recent=(state.workouts||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14);
     h=title('🏋 Тренировки',(state.workouts||[]).length)
-      +'<p class="hint" style="margin:0 0 12px">Что и когда делали. Упражнения запоминаются — в следующий раз добавляются одним нажатием.</p>'
       +dayNav()+bookList('exercises','exbook')+bookList('gyms','gymbook')
       +'<div class="addrow" style="margin:0 0 14px"><select id="w-kind">'
       +WKINDS.map(function(k){return '<option>'+k+'</option>';}).join('')
