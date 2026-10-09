@@ -1768,7 +1768,7 @@ function renderMain(){
               +'<button class="x" title="Убрать" data-a="del-dish" data-v="'+sl+'" data-i="'+i+'">✕</button></div>';
           }).join('')
         : '<p class="hint" style="margin:0 0 6px">Пока ничего не записано.</p>';
-      h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+sl+'" placeholder="Что было… (несколько — через запятую)" autocomplete="off">'
+      h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+sl+'" placeholder="Что было… (несколько — через «;»)" autocomplete="off">'
         +'<button class="btn ghost" data-a="add-dish" data-v="'+sl+'">Добавить</button></div>';
       if(top.length)
         h+='<div class="quick"><span class="lbl">часто:</span>'
@@ -3985,8 +3985,8 @@ function onClick(e){
       nm=di?di.value:'';
       if(!String(nm).trim()){if(di)di.focus();return;}
     }
-    /* можно внести сразу несколько блюд: через запятую, «;» или с новой строки */
-    var names=String(nm).split(/[,;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
+    /* можно внести сразу несколько блюд: через «;» или с новой строки (запятая в названии допустима) */
+    var names=String(nm).split(/[;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
     if(!names.length)return;
     markUndo();
     state.meals=state.meals||[];
