@@ -1768,7 +1768,7 @@ function renderMain(){
               +'<button class="x" title="Убрать" data-a="del-dish" data-v="'+sl+'" data-i="'+i+'">✕</button></div>';
           }).join('')
         : '<p class="hint" style="margin:0 0 6px">Пока ничего не записано.</p>';
-      h+='<div class="addrow" style="margin-top:8px"><input type="text" list="dishbook" id="dish-'+sl+'" placeholder="Что было…">'
+      h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+sl+'" placeholder="Что было… (несколько — через запятую)" autocomplete="off">'
         +'<button class="btn ghost" data-a="add-dish" data-v="'+sl+'">Добавить</button></div>';
       if(top.length)
         h+='<div class="quick"><span class="lbl">часто:</span>'
@@ -3985,12 +3985,15 @@ function onClick(e){
       nm=di?di.value:'';
       if(!String(nm).trim()){if(di)di.focus();return;}
     }
+    /* можно внести сразу несколько блюд: через запятую, «;» или с новой строки */
+    var names=String(nm).split(/[,;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
+    if(!names.length)return;
     markUndo();
-    var name=bookAdd('dishes',nm);
     state.meals=state.meals||[];
     var mm=mealsOn(diaryDay).filter(function(x){return x.slot===slot;})[0];
     if(!mm){mm={id:uid(),date:diaryDay,slot:slot,time:defaultTime(slot),dishes:[],note:''};state.meals.push(mm);}
-    mm.dishes=mm.dishes||[];mm.dishes.push(name);
+    mm.dishes=mm.dishes||[];
+    names.forEach(function(n1){mm.dishes.push(bookAdd('dishes',n1));});
     refocus=a==='add-dish'?('dish-'+slot):null;
     touch();renderAll();
   }
@@ -4884,6 +4887,13 @@ function init(){
   document.addEventListener('pointerup',planUp);
   document.addEventListener('pointercancel',planUp);
   document.addEventListener('change',onChange);
+  /* подсказки из справочника — только когда начали вводить, а не при фокусе */
+  document.addEventListener('input',function(e){
+    var t=e.target;
+    if(!t||!t.dataset||!t.dataset.book)return;
+    if(t.value.trim()){if(t.getAttribute('list')!==t.dataset.book)t.setAttribute('list',t.dataset.book);}
+    else t.removeAttribute('list');
+  });
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape'){closeViewer();closeDetail();closeModal();closeSettings();}
     if(e.key==='Enter'&&e.target.matches&&e.target.matches('.addrow input[type=text]')){
