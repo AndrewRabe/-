@@ -1760,7 +1760,7 @@ function renderMain(){
       var m=day.filter(function(x){return x.slot===sl;})[0];
       var ds2=(m&&m.dishes)||[];
       h+='<div class="groupblock slot"><h4>'+SLOTS[sl]+(ds2.length?' — '+ds2.length:'')
-        +(m?'<input type="time" class="duein" value="'+esc(m.time||'')+'" data-f="meal-time" data-v="'+sl+'" title="Во сколько" style="margin-left:8px">':'')
+        +'<input type="time" class="duein" id="mtime-'+sl+'" value="'+esc(m?(m.time||''):defaultTime(sl))+'" data-f="meal-time" data-v="'+sl+'" title="Во сколько" style="margin-left:8px">'
         +'</h4>';
       h+=ds2.length
         ? ds2.map(function(name,i){
@@ -3991,7 +3991,7 @@ function onClick(e){
     markUndo();
     state.meals=state.meals||[];
     var mm=mealsOn(diaryDay).filter(function(x){return x.slot===slot;})[0];
-    if(!mm){mm={id:uid(),date:diaryDay,slot:slot,time:defaultTime(slot),dishes:[],note:''};state.meals.push(mm);}
+    if(!mm){var tin=document.getElementById('mtime-'+slot);mm={id:uid(),date:diaryDay,slot:slot,time:(tin&&tin.value)||defaultTime(slot),dishes:[],note:''};state.meals.push(mm);}
     mm.dishes=mm.dishes||[];
     names.forEach(function(n1){mm.dishes.push(bookAdd('dishes',n1));});
     refocus=a==='add-dish'?('dish-'+slot):null;
