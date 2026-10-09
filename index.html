@@ -1458,7 +1458,7 @@ function bookList(key,id){
 }
 var PLACES={home:'Дома',gym:'В зале',outdoor:'На улице'};
 var statEx='', statMetric='', statPlace='';
-var STAT_METRICS={rm:'1ПМ',w:'Макс. вес',r:'Макс. повторов',v:'Объём'};
+var STAT_METRICS={rm:'1ПМ',real:'Реальный 1ПМ',w:'Макс. вес',r:'Макс. повторов',v:'Объём'};
 function num(v){var n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:0;}
 /* подходы упражнения: [{r:повторы,w:вес}]; старые записи (подходы/повторы/вес одной строкой) переносим сюда */
 function normEx(x){
@@ -1470,6 +1470,12 @@ function normEx(x){
 }
 /* расчётный максимум на 1 повтор (формула Эпли) */
 function est1rm(r,w){r=num(r);w=num(w);if(r<1||w<=0)return 0;return r===1?w:w*(1+r/30);}
+/* подпись у подхода: на 1 повтор — реальный максимум, иначе расчётный */
+function rmText(t){
+  var v=est1rm(t.r,t.w);
+  if(!v)return '';
+  return num(t.r)===1?'1ПМ (факт)':'1ПМ ≈ '+fmtN(v);
+}
 function fmtN(n){return String(Math.round(n*10)/10).replace('.',',');}
 function placeLabel(w){
   if(!w||!w.place)return '';
@@ -1490,10 +1496,11 @@ function exHistory(name,place,beforeDate){
       var sets=normEx(x).filter(function(t){return num(t.r)>0||num(t.w)>0;});
       if(!sets.length)return;
       var e=byDate[w.date];
-      if(!e){e=byDate[w.date]={date:w.date,place:w.place||'',gym:w.gym||'',sets:[],rm:0,w:0,r:0,v:0};out.push(e);}
+      if(!e){e=byDate[w.date]={date:w.date,place:w.place||'',gym:w.gym||'',sets:[],rm:0,real:0,w:0,r:0,v:0};out.push(e);}
       sets.forEach(function(t){
         var r=num(t.r),wt=num(t.w);
         e.sets.push(t);
+        if(r===1&&wt>e.real)e.real=wt; /* подход на 1 повтор — реальный максимум */
         e.rm=Math.max(e.rm,est1rm(r,wt));e.w=Math.max(e.w,wt);e.r=Math.max(e.r,r);
         e.v+=wt>0?r*wt:r;
       });
@@ -1539,9 +1546,11 @@ function statsHtml(){
   if(!statEx||!names[statEx.toLowerCase()])statEx=list[0];
   var hist=exHistory(statEx,statPlace);
   var anyW=hist.some(function(e){return e.w>0;});
+  var hasReal=hist.some(function(e){return e.real>0;});
   var met=statMetric||(anyW?'rm':'r');
+  if(met==='real'&&!hasReal)met=anyW?'rm':'r';
   if(!anyW&&(met==='rm'||met==='w'))met='r';
-  var unit={rm:'кг',w:'кг',r:'повт.',v:anyW?'кг':'повт.'}[met];
+  var unit={rm:'кг',real:'кг',w:'кг',r:'повт.',v:anyW?'кг':'повт.'}[met];
   var h='<div class="groupblock"><h3>Прогресс</h3>'
     +'<div class="addrow" style="margin-top:0"><select data-f="st-ex">'
     +list.map(function(n){return '<option'+(n===statEx?' selected':'')+'>'+esc(n)+'</option>';}).join('')+'</select>'
@@ -1554,19 +1563,22 @@ function statsHtml(){
   var tiles=[];
   if(anyW){
     tiles.push('<div><b>'+fmtN(bw.w)+' кг</b><span>макс. вес · '+fmtDue(bw.date)+'</span></div>');
-    tiles.push('<div><b>≈ '+fmtN(brm.rm)+' кг</b><span>лучший 1ПМ · '+fmtDue(brm.date)+'</span></div>');
+    var brl=hist.reduce(function(a,e){return e.real>a.real?e:a;},hist[0]);
+    if(hasReal)tiles.push('<div><b>'+fmtN(brl.real)+' кг</b><span>реальный 1ПМ · '+fmtDue(brl.date)+'</span></div>');
+    tiles.push('<div><b>≈ '+fmtN(brm.rm)+' кг</b><span>расчётный 1ПМ · '+fmtDue(brm.date)+'</span></div>');
   }
   tiles.push('<div><b>'+fmtN(br.r)+'</b><span>макс. повторов · '+fmtDue(br.date)+'</span></div>');
   tiles.push('<div><b>'+hist.length+'</b><span>'+(hist.length===1?'занятие':'занятий')+'</span></div>');
-  if(hist.length>1){
-    var f0=hist[0][met],f1=hist[hist.length-1][met];
-    if(f0>0){var d=(f1-f0)/f0*100;tiles.push('<div><b>'+(d>0?'+':'')+fmtN(d)+'%</b><span>с '+fmtDue(hist[0].date)+' по '+STAT_METRICS[met].toLowerCase()+'</span></div>');}
+  var cpts=hist.filter(function(e){return e[met]>0;});
+  if(cpts.length>1){
+    var f0=cpts[0][met],f1=cpts[cpts.length-1][met];
+    if(f0>0){var d=(f1-f0)/f0*100;tiles.push('<div><b>'+(d>0?'+':'')+fmtN(d)+'%</b><span>с '+fmtDue(cpts[0].date)+' по '+STAT_METRICS[met].toLowerCase()+'</span></div>');}
   }
   h+='<div class="stat-tiles">'+tiles.join('')+'</div>'
-    +'<div class="seg">'+Object.keys(STAT_METRICS).filter(function(k){return anyW||k==='r'||k==='v';}).map(function(k){
+    +'<div class="seg">'+Object.keys(STAT_METRICS).filter(function(k){return k==='real'?hasReal:(anyW||k==='r'||k==='v');}).map(function(k){
       return '<button data-a="st-metric" data-v="'+k+'"'+(k===met?' class="on"':'')+'>'+STAT_METRICS[k]+'</button>';}).join('')+'</div>'
-    +lineChart(hist.map(function(e){return {d:e.date,v:e[met]};}),unit)
-    +(met==='rm'?'<p class="hint" style="margin:0 0 8px">1ПМ — расчётный максимум на одно повторение по формуле Эпли: вес × (1 + повторы / 30).</p>':'');
+    +lineChart(cpts.map(function(e){return {d:e.date,v:e[met]};}),unit)
+    +(met==='rm'?'<p class="hint" style="margin:0 0 8px">Расчётный 1ПМ — оценка по формуле Эпли: вес × (1 + повторы / 30). Подход на 1 повторение считается реальным максимумом и входит в график как есть.</p>':met==='real'?'<p class="hint" style="margin:0 0 8px">Реальный 1ПМ — самый тяжёлый вес, взятый на 1 повторение. Чтобы внести такую попытку, запишите подход «1 × вес».</p>':'');
   h+=hist.slice(-8).reverse().map(function(e){
     return '<div class="dish"><span class="t">'+fmtDue(e.date)+' — '+esc(setsText(e.sets))
       +(e.place?' <span class="wish-meta">'+esc(PLACES[e.place])+(e.place==='gym'&&e.gym?' · '+esc(e.gym):'')+'</span>':'')+'</span></div>';
@@ -1574,9 +1586,9 @@ function statsHtml(){
   /* рекорды по всем упражнениям */
   h+='<h3 style="margin-top:14px">Рекорды</h3>'+list.map(function(n){
     var hh=exHistory(n,statPlace);if(!hh.length)return '';
-    var m=hh.reduce(function(a,e){return Math.max(a,e.w);},0),rm=hh.reduce(function(a,e){return Math.max(a,e.rm);},0),mr=hh.reduce(function(a,e){return Math.max(a,e.r);},0);
+    var rl=hh.reduce(function(a,e){return Math.max(a,e.real);},0),m=hh.reduce(function(a,e){return Math.max(a,e.w);},0),rm=hh.reduce(function(a,e){return Math.max(a,e.rm);},0),mr=hh.reduce(function(a,e){return Math.max(a,e.r);},0);
     return '<div class="dish"><button class="t" style="text-align:left" data-a="st-pick" data-n="'+esc(n)+'">'+esc(n)+'</button>'
-      +'<span class="wish-meta">'+(m?fmtN(m)+' кг · 1ПМ ≈ '+fmtN(rm):mr+' повт.')+'</span></div>';
+      +'<span class="wish-meta">'+(m?fmtN(m)+' кг · '+(rl?'1ПМ '+fmtN(rl)+' (факт)':'1ПМ ≈ '+fmtN(rm)):mr+' повт.')+'</span></div>';
   }).join('');
   return h+'</div>';
 }
@@ -1986,7 +1998,7 @@ function renderMain(){
                 +'<input type="text" inputmode="decimal" id="set-'+w.id+'-'+i+'-'+j+'" class="duein" value="'+esc(t.r||'')+'" data-f="set-f" data-k="r" data-id="'+w.id+'" data-i="'+i+'" data-j="'+j+'" placeholder="повторы" style="width:84px">'
                 +'<span class="wish-meta">×</span>'
                 +'<input type="text" inputmode="decimal" class="duein" value="'+esc(t.w||'')+'" data-f="set-f" data-k="w" data-id="'+w.id+'" data-i="'+i+'" data-j="'+j+'" placeholder="вес, кг" style="width:84px">'
-                +'<span class="wish-meta" id="rm-'+w.id+'-'+i+'-'+j+'">'+(rm?'1ПМ ≈ '+fmtN(rm):'')+'</span>'
+                +'<span class="wish-meta" id="rm-'+w.id+'-'+i+'-'+j+'">'+rmText(t)+'</span>'
                 +'<button class="x" title="Убрать подход" data-a="del-set" data-id="'+w.id+'" data-i="'+i+'" data-j="'+j+'">✕</button></div>';
             }).join('')
             +'<button class="btn ghost" style="padding:4px 10px;margin-top:4px" data-a="add-set" data-id="'+w.id+'" data-i="'+i+'">＋ подход</button></div>';
@@ -2010,7 +2022,7 @@ function renderMain(){
             +(w.place?'<span class="wish-meta">'+esc(placeLabel(w))+'</span>':'')
             +'<span class="wish-meta">'+((w.exs||[]).length||'')+'</span></div>';
         }).join('')+'</div>';
-    h+=statsHtml();
+    h+='<div id="stats-wrap">'+statsHtml()+'</div>';
   }else if(v==='cal'){
     var tasksBy={};
     state.items.filter(visible).forEach(function(it){
@@ -4941,8 +4953,9 @@ function onChange(e){
     if(st){
       st[t.dataset.k]=t.value.trim();touch();
       var rl=document.getElementById('rm-'+t.dataset.id+'-'+t.dataset.i+'-'+t.dataset.j);
-      var rv=est1rm(st.r,st.w);
-      if(rl)rl.textContent=rv?'1ПМ ≈ '+fmtN(rv):'';
+      if(rl)rl.textContent=rmText(st);
+      var sw=document.getElementById('stats-wrap');
+      if(sw)sw.innerHTML=statsHtml();
     }
     return;
   }
