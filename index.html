@@ -1761,8 +1761,8 @@ function nv(view,label,count,icon){
 /* один перечень разделов: из него строится и боковое меню, и плитки главной */
 function navSections(){
   var act=state.items.filter(visible),objs=act.filter(notInbox);
-  var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0,sellN2=0;
-  act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&isGeneral(t))tasksN++;});plansN+=openCount(it.plans);
+  var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0,sellN2=0,goN=0;
+  act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&isGeneral(t))tasksN++;if(!t.done&&t.go)goN++;});plansN+=openCount(it.plans);
     (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)buyN++;if(!t.done&&t.improve)impN++;if(!t.done&&t.sell)sellN2++;});doneN+=(it.tasks||[]).length-openCount(it.tasks);
     (it.tasks||[]).forEach(function(t){if(!t.done&&isPay(t))payN++;});});
   var today=todayStr(),att=0;
@@ -1780,6 +1780,7 @@ function navSections(){
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
       {v:'buy',label:'Покупки',n:(buyN+(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length)||null,icon:'🛒'},
       {v:'improve',label:'Планы',n:impN,icon:'🛠'},
+      {v:'go',label:'Куда сходить',n:goN||null,icon:'🧭'},
       {v:'tolist',label:'Выложить на продажу',n:sellN2||null,icon:'📤'},
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
@@ -2390,6 +2391,17 @@ function renderMain(){
           return '<button class="'+(newDays.indexOf(i)>=0?'on':'')+'" data-a="ev-dow" data-v="'+i+'">'+d+'</button>';
         }).join('')+'</div><p class="hint">Не выбрано ни одного дня — повтор будет в тот же день недели, что и выбранная дата.</p>':'')
       +'</div>';
+  }else if(v==='go'){
+    var gl=[];
+    state.items.filter(visible).forEach(function(it){
+      (it.tasks||[]).forEach(function(t){if(!t.done&&t.go)gl.push({it:it,t:t});});
+    });
+    gl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    h=title('🧭 Куда сходить',gl.length)+plusRow('go')+(addOpen.go?newTaskForm('go'):'')
+      +(gl.length?'<div class="groupblock">'+gl.map(function(e){
+          return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
+        }).join('')+'</div>'
+        :'<div class="empty">Мест пока нет. Нажмите «＋» и запишите, куда хотите сходить; когда решите — кнопка «Иду» поставит это в календарь.</div>');
   }else if(v==='tolist'){
     var tl=[];
     state.items.filter(visible).forEach(function(it){
@@ -2507,8 +2519,8 @@ function itemSelect(id,label,withInbox){
 }
 /* группы задач: независимы от объектов, у задачи необязательное поле g */
 /* все виды задач создаются одной формой; тип — необязательная пометка у обычной задачи */
-var TASK_TYPES={general:'Общая',buy:'Покупка',pay:'Платёж',improve:'План',sell:'Выложить на продажу'};
-function isGeneral(t){return !t.buy&&!t.sell&&!t.improve&&!isPay(t);}
+var TASK_TYPES={general:'Общая',buy:'Покупка',pay:'Платёж',improve:'План',go:'Сходить',sell:'Выложить на продажу'};
+function isGeneral(t){return !t.buy&&!t.sell&&!t.improve&&!t.go&&!isPay(t);}
 function newTaskForm(defType){
   var groups=(state.taskGroups||[]).length
     ?'<select id="nt-group" aria-label="Группа"><option value="">без группы</option>'
@@ -2518,6 +2530,8 @@ function newTaskForm(defType){
     +Object.keys(TASK_TYPES).map(function(k){return '<option value="'+k+'"'+(k===defType?' selected':'')+'>'+TASK_TYPES[k]+'</option>';}).join('')+'</select>'
     +'<input type="text" id="nt-text" placeholder="Что нужно сделать…">'
     +'<input type="text" inputmode="decimal" id="nt-sum" placeholder="Сумма, ₽" style="flex:none;width:110px'+(defType==='pay'?'':';display:none')+'">'
+ +'<input type="text" id="nt-addr" placeholder="Адрес (необязательно)" style="'+(defType==='go'?'':'display:none')+'">'
+    +'<input type="text" id="nt-when" placeholder="Когда удобно, например «вечером»" style="'+(defType==='go'?'':'display:none')+'">'
     +'<input type="date" id="nt-due" title="Срок (необязательно)">'
     +'<input type="time" id="nt-time" title="Время (необязательно)" style="width:96px">'
     +'<select id="nt-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
@@ -2618,6 +2632,10 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
     +'<span class="t">'+esc(x.text)+'</span>'
+    +(kind==='tasks'&&x.go&&route.view!=='go'?'<span class="rep" title="Сходить">🧭</span>':'')
+    +(kind==='tasks'&&x.go&&x.addr?'<span class="wish-meta">📍 '+esc(x.addr)+'</span>':'')
+    +(kind==='tasks'&&x.go&&x.when?'<span class="wish-meta">🕒 '+esc(x.when)+'</span>':'')
+    +(kind==='tasks'&&x.go&&!x.done&&!dueEdit?'<button class="x" style="color:var(--accent);font-weight:600" title="Запланировать: поставить в календарь" data-a="go-plan" data-id="'+itemId+'" data-sub="'+x.id+'">Иду</button>':'')
     +(kind==='tasks'&&x.improve&&route.view!=='improve'?'<span class="rep" title="План">🛠</span>':'')
     +(kind==='tasks'&&x.sell&&route.view!=='tolist'?'<span class="rep" title="Выложить на продажу">📤</span>':'')
     +(kind==='tasks'&&x.buy&&route.view!=='buy'?'<span class="rep" title="Покупка">🛒</span>':'')
@@ -3050,6 +3068,22 @@ function openSellStatus(itemId){
     +'<label for="sl-price">Цена, ₽ (необязательно)</label><input id="sl-price" type="text" inputmode="decimal" value="'+esc(it.price||'')+'">'
     +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Не сейчас</button>'
     +'<button class="btn" data-a="sell-go" data-id="'+itemId+'">На продажу</button></div></div>';
+}
+/* «Иду»: место из списка превращается в мероприятие календаря с конкретной датой */
+function openGoPlan(itemId,taskId){
+  var host=find(itemId),t=host&&(host.tasks||[]).filter(function(x){return x.id===taskId;})[0];
+  if(!t)return;
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  m.innerHTML='<div class="modal-box"><h3>Иду — в календарь</h3>'
+    +'<label for="gp-title">Что</label><input id="gp-title" type="text" value="'+esc(t.text)+'">'
+    +'<label for="gp-addr">Адрес</label><input id="gp-addr" type="text" value="'+esc(t.addr||'')+'">'
+    +'<label for="gp-date">Дата</label><input id="gp-date" type="date" value="'+esc(t.due||todayStr())+'">'
+    +'<label for="gp-time">Время</label><input id="gp-time" type="time" value="'+esc(t.time||'')+'">'
+    +(t.when?'<p class="wish-meta" style="margin:6px 0 0">Удобно: '+esc(t.when)+'</p>':'')
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<button class="btn" data-a="go-plan-run" data-id="'+itemId+'" data-sub="'+taskId+'">В календарь</button></div></div>';
+  document.getElementById('gp-date').focus();
 }
 function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
@@ -3713,6 +3747,7 @@ function mergeState(data){
           if(x.buy)e.buy=true;
           if(x.sell)e.sell=true;
           if(x.improve)e.improve=true;
+          if(x.go){e.go=true;if(x.addr)e.addr=x.addr;if(x.when)e.when=x.when;}
           if(x.sum!=null&&x.sum!=='')e.sum=x.sum;
           if(x.hist)e.hist=x.hist.slice();
           if(x.g){
@@ -4721,6 +4756,12 @@ function onClick(e){
     if(type==='buy')ne.buy=true;
     else if(type==='improve')ne.improve=true;
     else if(type==='sell')ne.sell=true;
+    else if(type==='go'){
+      ne.go=true;
+      var nad=document.getElementById('nt-addr'),nwh=document.getElementById('nt-when');
+      if(nad&&nad.value.trim())ne.addr=nad.value.trim();
+      if(nwh&&nwh.value.trim())ne.when=nwh.value.trim();
+    }
     else if(type==='pay'){ne.pay=true;var nsm=document.getElementById('nt-sum'),nsv=nsm?num(nsm.value):0;if(nsv>0)ne.sum=nsv;}
     var ndu=document.getElementById('nt-due'),ntm=document.getElementById('nt-time'),nrp=document.getElementById('nt-repeat'),ngr=document.getElementById('nt-group');
     if(ndu&&ndu.value)ne.due=ndu.value;
@@ -4891,6 +4932,21 @@ function onClick(e){
     if(spr&&spr.value.trim())it.price=spr.value.trim();
     touch();closeModal();renderAll();
     toast('«'+it.name+'» переведена в «На продажу»','Отменить');
+  }
+  else if(a==='go-plan'){openGoPlan(id,b.dataset.sub);}
+  else if(a==='go-plan-run'){
+    var gh=find(id),gt=gh&&(gh.tasks||[]).filter(function(x){return x.id===b.dataset.sub;})[0];
+    if(!gt)return;
+    var gti=document.getElementById('gp-title'),gad=document.getElementById('gp-addr'),gda=document.getElementById('gp-date'),gtm=document.getElementById('gp-time');
+    var gtx=gti?gti.value.trim():'';
+    if(!gtx){if(gti)gti.focus();return;}
+    if(!gda||!gda.value){if(gda)gda.focus();return;}
+    markUndo();
+    var evn={id:uid(),title:gtx+((gad&&gad.value.trim())?' · '+gad.value.trim():''),date:gda.value,time:(gtm&&gtm.value)||'',itemId:isInbox(gh)?'':gh.id,repeat:''};
+    state.events=state.events||[];state.events.push(evn);
+    gt.done=true;gt.eventId=evn.id;
+    touch();closeModal();renderAll();
+    toast('В календаре на '+fmtDue(evn.date)+(evn.time?', '+evn.time:''),'Отменить');
   }
   else if(a==='buy-own'){openBuyOwn(id,b.dataset.sub);}
   else if(a==='buy-own-go'){
@@ -5419,6 +5475,7 @@ function onChange(e){
   if(f==='nt-type'){
     var nsh=document.getElementById('nt-sum');
     if(nsh)nsh.style.display=t.value==='pay'?'':'none';
+    ['nt-addr','nt-when'].forEach(function(id){var e2=document.getElementById(id);if(e2)e2.style.display=t.value==='go'?'':'none';});
     return;
   }
   if(f==='w-place-new'){
