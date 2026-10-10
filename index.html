@@ -1745,10 +1745,12 @@ function navSections(){
   });
   return [
     {title:'Разделы',items:cats},
+    {title:'Задачи',items:[
+      {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
+      {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
+    ]},
     {title:'Сводки',items:[
       {v:'notes',label:'Заметки',n:(state.notes||[]).length,icon:'📝'},
-      {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
-      {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'},
       {v:'cal',label:'Календарь',n:att,icon:'📅'},
       {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
