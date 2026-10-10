@@ -1993,7 +1993,7 @@ function renderMain(){
       h+='<p class="today-empty">На сегодня ничего не назначено. Свободный день.</p>';
     h+='</div>';
 
-    navSections().forEach(function(g){
+    navSections().filter(function(g){return g.title!=='Дневники';}).forEach(function(g){      /* дневники — в верхней кнопке 📔 */
       h+='<div class="homegroup"><h4>'+g.title+'</h4><div class="tiles">'
         +g.items.map(function(x){
           return '<button class="tile" data-a="go" data-v="'+x.v+'">'
