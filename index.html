@@ -1684,7 +1684,29 @@ function inboxItem(){
   return it;
 }
 /* опустевший «Без объекта» убираем, чтобы не мозолил глаза */
+/* текст с управляющими символами или «�» — остаток двоичного файла, прочитанного как текст */
+function isGarbage(text){
+  var s=String(text||'');
+  for(var i=0;i<s.length;i++){
+    var c=s.charCodeAt(i);
+    if(c===0xFFFD||(c<32&&c!==9&&c!==10&&c!==13))return true;
+  }
+  return false;
+}
+/* убирает из задач, покупок и вопросов мусор от неудачного импорта; возвращает, сколько убрано */
+function purgeGarbage(){
+  var n=0;
+  (state.items||[]).forEach(function(it){
+    ['tasks','plans','questions'].forEach(function(k){
+      if(!it[k])return;
+      var keep=it[k].filter(function(x){return !isGarbage(x.text);});
+      n+=it[k].length-keep.length;it[k]=keep;
+    });
+  });
+  return n;
+}
 function pruneInbox(){
+  purgeGarbage();
   var it=find(INBOX);
   if(it&&!(it.tasks||[]).length&&!(it.plans||[]).length&&!(it.questions||[]).length)
     state.items=state.items.filter(notInbox);
@@ -5213,6 +5235,8 @@ function init(){
     if(provider()&&Date.now()-lastPull>30000)pull(true);
     checkReminders();
   });
+  var junk=purgeGarbage();
+  if(junk){touch();setTimeout(function(){toast('Убрано повреждённых задач: '+junk);},600);}
   restoreUi();
   if(applyHash())renderAll();else renderAll();
   window.addEventListener('hashchange',function(){if(applyHash())renderAll();});
