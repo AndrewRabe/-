@@ -65,8 +65,8 @@ def rrule(rep: str, days: List[int] = None, interval: int = 1, until: str = "") 
 
 def build(state: dict, lead_min: int = 0) -> str:
     now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Домашний реестр//RU", "CALSCALE:GREGORIAN",
-         "METHOD:PUBLISH", "X-WR-CALNAME:Домашний реестр",
+    L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Личный кабинет//RU", "CALSCALE:GREGORIAN",
+         "METHOD:PUBLISH", "X-WR-CALNAME:Личный кабинет",
          "X-WR-TIMEZONE:" + os.environ.get("TZ_NAME", "Europe/Moscow"),
          "REFRESH-INTERVAL;VALUE=DURATION:PT2H", "X-PUBLISHED-TTL:PT2H"]
 

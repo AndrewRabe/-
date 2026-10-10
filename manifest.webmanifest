@@ -1,6 +1,6 @@
 {
-  "name": "Домашний реестр",
-  "short_name": "Реестр",
+  "name": "Личный кабинет",
+  "short_name": "Кабинет",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -18,7 +18,7 @@ ua_pub=W.b64e(ua_key.public_key().public_bytes(
 auth=W.b64e(os.urandom(16))
 
 # ── 1. шифрование ↔ расшифровка ──
-msg="Домашний реестр — 01.09\n• Оплатить аренду — 10 000 ₽".encode()
+msg="Личный кабинет — 01.09\n• Оплатить аренду — 10 000 ₽".encode()
 block=W.encrypt(msg, ua_pub, auth)
 check("расшифровывается тем же ключом", W.decrypt(block, ua_key, auth)==msg)
 check("заголовок содержит соль и ключ", len(block)>16+4+1+65 and block[20]==65)

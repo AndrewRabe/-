@@ -5,7 +5,7 @@ self.addEventListener('install',function(e){self.skipWaiting();});
 self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});
 
 self.addEventListener('push',function(event){
-  var data={title:'Домашний реестр',body:'Есть дела на сегодня',url:''};
+  var data={title:'Личный кабинет',body:'Есть дела на сегодня',url:''};
   try{ if(event.data) data=Object.assign(data,event.data.json()); }
   catch(e){ if(event.data) data.body=event.data.text(); }
   event.waitUntil(self.registration.showNotification(data.title,{

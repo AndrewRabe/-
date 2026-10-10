@@ -147,7 +147,7 @@ def build_text(state: dict, day: date) -> Optional[str]:
     if not total and not nxt["events"] and not nxt["today"] and not nxt["bd"]:
         return None
 
-    head = f"<b>Домашний реестр — {day.day:02d}.{day.month:02d}, {WEEKDAY[dow(day)]}</b>"
+    head = f"<b>Личный кабинет — {day.day:02d}.{day.month:02d}, {WEEKDAY[dow(day)]}</b>"
     parts = [head]
 
     def block(title: str, rows: List[str], limit: int = 12) -> None:
