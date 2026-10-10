@@ -377,6 +377,7 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .cal-legend{font-size:11.5px;color:var(--muted);display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .cal-legend .cal-dot{display:inline-block;vertical-align:middle;margin-right:5px}
 .due{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px;white-space:nowrap}
+select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
 .duebtn:hover{outline:1px solid var(--accent)}
 .duebtn.none{background:transparent;border:1px dashed var(--line);font-weight:500}
@@ -2485,8 +2486,8 @@ function groupSelect(itemId,x){
 function moveSelect(itemId,taskId){
   var list=state.items.filter(visible).filter(notInbox);
   if(!list.length)return '';
-  return '<select class="duein" data-f="task-move" data-id="'+itemId+'" data-sub="'+taskId+'" title="Привязать к объекту">'
-    +'<option value="">к объекту…</option>'
+  return '<select class="duein movesel" data-f="task-move" data-id="'+itemId+'" data-sub="'+taskId+'" title="Привязать к объекту" aria-label="Привязать к объекту">'
+    +'<option value="">🔗</option>'
     +list.map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
     +'</select>';
 }
