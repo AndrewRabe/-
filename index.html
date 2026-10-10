@@ -2003,13 +2003,8 @@ function renderMain(){
             }).join('')
             +'<button class="btn ghost" style="padding:4px 10px;margin-top:4px" data-a="add-set" data-id="'+w.id+'" data-i="'+i+'">＋ подход</button></div>';
         }).join('')
-          +'<div class="addrow" style="margin-top:8px"><input type="text" list="exbook" id="ex-'+w.id+'" placeholder="Упражнение…">'
+          +'<div class="addrow" style="margin-top:8px"><input type="text" data-book="exbook" autocomplete="off" id="ex-'+w.id+'" placeholder="Упражнение…">'
           +'<button class="btn ghost" data-a="add-ex" data-id="'+w.id+'">Добавить</button></div>';
-        var topEx=bookTop('exercises',10);
-        if(topEx.length)
-          h+='<div class="quick"><span class="lbl">часто:</span>'
-            +topEx.map(function(x){return '<button data-a="quick-ex" data-id="'+w.id+'" data-n="'+esc(x.name)+'">'+esc(x.name)+'</button>';}).join('')
-            +'</div>';
         h+='<div class="addrow" style="margin-top:8px"><input type="text" value="'+esc(w.note||'')+'" data-f="w-note" data-id="'+w.id+'" placeholder="Как прошло (необязательно)"></div>';
       }
       h+='</div>';
