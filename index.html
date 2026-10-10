@@ -377,6 +377,8 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .cal-legend{font-size:11.5px;color:var(--muted);display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .cal-legend .cal-dot{display:inline-block;vertical-align:middle;margin-right:5px}
 .due{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px;white-space:nowrap}
+.sechead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 10px}
+.sechead h3{margin:0;font-size:17px}
 button.plusbtn{font-size:18px;line-height:1;padding:6px 14px}
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
@@ -1776,7 +1778,7 @@ function navSections(){
     {title:'Задачи',items:[
       {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
-      {v:'buy',label:'Покупки',n:buyN,icon:'🛒'},
+      {v:'buy',label:'Покупки',n:(buyN+(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length)||null,icon:'🛒'},
       {v:'improve',label:'Планы',n:impN,icon:'🛠'},
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
@@ -1785,7 +1787,6 @@ function navSections(){
       {v:'cal',label:'Календарь',n:att,icon:'📅'},
       {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
-      {v:'wish',label:'Желания',n:(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length,icon:'⭐'}
     ]},
     {title:'Дневники',items:[
       {v:'workouts',label:'Тренировки',n:workoutsOn(today).length||null,icon:'🏋'},
@@ -2300,49 +2301,6 @@ function renderMain(){
           return '<button class="'+(newDays.indexOf(i)>=0?'on':'')+'" data-a="ev-dow" data-v="'+i+'">'+d+'</button>';
         }).join('')+'</div><p class="hint">Не выбрано ни одного дня — повтор будет в тот же день недели, что и выбранная дата.</p>':'')
       +'</div>';
-  }else if(v==='wish'){
-    if(YD.ready()&&!ydPricesP)ydPricesLoad().then(function(m){if(Object.keys(m).length&&route.view==='wish')renderMain();});
-    var ws=(state.wishes||[]).slice().sort(function(a,b){
-      if((a.status==='bought')!==(b.status==='bought'))return a.status==='bought'?1:-1;
-      return 0;
-    });
-    h=title('⭐ Желания',ws.filter(function(w){return w.status!=='bought';}).length)
-      +plusRow('wish')
-      +(addOpen.wish?'<div class="groupblock"><h3>Новое желание</h3><div class="addrow" style="margin-top:0"><input type="text" id="wish-new" placeholder="Что хотите купить…">'
-      +'<input type="text" id="wish-new-target" placeholder="Целевая цена" style="width:120px">'
-      +'<button class="btn" data-a="add-wish">Добавить</button></div></div>':'');
-    ws.forEach(function(w){
-      var tgt=moneyNum(w.target),last=monPrice(w)||moneyNum(w.last);
-      var hit=w.status!=='bought'&&tgt&&last&&last<=tgt;
-      h+='<div class="wish'+(hit?' hit':'')+(w.status==='bought'?' bought':'')+'">'
-        +'<div class="wish-top"><span>'+(w.status==='bought'?'✅':'⭐')+'</span>'
-        +'<input value="'+esc(w.title)+'" data-f="wish-title" data-id="'+w.id+'" aria-label="Название">'
-        +'<button class="btn ghost" style="padding:5px 10px;font-size:12.5px" data-a="wish-bought" data-id="'+w.id+'">'+(w.status==='bought'?'Вернуть':'Куплено')+'</button>'
-        +'<button class="x" title="Удалить" data-a="del-wish" data-id="'+w.id+'">✕</button></div>'
-        +'<div class="wish-prices">'
-        +'<label>цель</label><input value="'+esc(w.target||'')+'" data-f="wish-target" data-id="'+w.id+'" placeholder="15 000">'
-        +'<label>сейчас</label><input value="'+esc(w.last||'')+'" data-f="wish-last" data-id="'+w.id+'" placeholder="обновите цену">'
-        +(w.min?'<span class="wish-meta">минимум: '+esc(w.min)+'</span>':'')
-        +(w.lastAt?'<span class="wish-meta">обновлено '+fmtDue(w.lastAt)+'</span>':'')
-        +monHtml(w)
-        +(hit?'<span class="wish-hit">🎯 цена достигла цели</span>':'')
-        +'</div><div>';
-      (w.links||[]).forEach(function(l){
-        h+='<span class="mlink"><a class="mlink" style="margin:0;padding:0;background:none" href="'+esc(l.url)+'" target="_blank" rel="noopener">'+(MARKETS[l.market]||'Ссылка')+' ↗</a>'
-          +'<button class="x" title="Убрать ссылку" data-a="del-wish-link" data-id="'+w.id+'" data-sub="'+l.id+'">✕</button></span>';
-      });
-      h+='</div><div class="addrow"><select id="wl-market-'+w.id+'" aria-label="Площадка">';
-      Object.keys(MARKETS).forEach(function(mk){h+='<option value="'+mk+'">'+MARKETS[mk]+'</option>';});
-      h+='</select><input type="text" id="wl-url-'+w.id+'" placeholder="Ссылка на товар…">'
-        +'<button class="btn ghost" data-a="add-wish-link" data-id="'+w.id+'">Добавить</button></div>'
-        +'</div>';
-    });
-    if(!ws.length)h+='<div class="empty">Пока пусто. Добавьте первое желание — название и целевую цену.</div>';
-    var ozonN=ws.filter(function(w){return w.status!=='bought'&&(w.links||[]).some(function(l){return l.market==='ozon';});}).length;
-    if(ozonN)h+='<div class="btnrow" style="margin-top:14px">'
-      +(YD.ready()?'<button class="btn ghost" data-a="wish-refresh">Обновить цены монитора</button>':'')
-      +'<button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
-      +'';
   }else if(v==='selling'){
     var sl=state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}),slSum=0,slPosted=0;
     sl.forEach(function(i){
@@ -2485,22 +2443,26 @@ function renderMain(){
       h+='</div>';
     }else h+='<div class="empty">Пока пусто. Добавьте вручную или загрузите из календаря: ⚙ → «Добавить мероприятия из файла» (.ics).</div>';
   }else if(v==='buy'){
+    if(YD.ready()&&!ydPricesP)ydPricesLoad().then(function(m){if(Object.keys(m).length&&route.view==='buy')renderMain();});
     var bl2=[];
     state.items.filter(visible).forEach(function(it){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)bl2.push({it:it,t:t});});
     });
     bl2.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
-    h=title('🛒 Покупки',bl2.length)+plusRow('buy')
-      +(addOpen.buy?'<div class="groupblock"><h3>Новая покупка</h3><div class="addrow">'
-      +'<input type="text" id="sum-buy" placeholder="Что купить…">'
-      +'<input type="date" id="sum-buy-due" title="Когда нужно (необязательно)">'
-      +itemSelect('sum-buy-item','Объект',true)
-      +'<button class="btn" data-a="sum-add-buy">Добавить</button></div></div>':'');
-    h+=bl2.length?'<div class="groupblock">'+bl2.map(function(e){
-        return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
-      }).join('')+'</div>'
-      :'<div class="empty">Список покупок пуст — нажмите «＋» и добавьте первую.</div>';
-
+    var wishOpenN=(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length;
+    h=title('🛒 Покупки',bl2.length+wishOpenN)
+      +secRow('Список покупок','buy',bl2.length)
+      +(addOpen.buy?'<div class="groupblock"><h3>Новая покупка</h3><div class="addrow" style="margin-top:0">'
+        +'<input type="text" id="sum-buy" placeholder="Что купить…">'
+        +'<input type="date" id="sum-buy-due" title="Когда нужно (необязательно)">'
+        +itemSelect('sum-buy-item','Объект',true)
+        +'<button class="btn" data-a="sum-add-buy">Добавить</button></div></div>':'')
+      +(bl2.length?'<div class="groupblock">'+bl2.map(function(e){
+          return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
+        }).join('')+'</div>'
+        :'<div class="empty">Список покупок пуст — нажмите «＋» и добавьте первую.</div>')
+      +secRow('Список желаний','wish',wishOpenN)
+      +wishBlock();
   }else if(v==='improve'){
     var pl=[];
     state.items.filter(visible).forEach(function(it){
@@ -2574,6 +2536,53 @@ function paySum(t){
 }
 function isPay(t){return !!t.pay||paySum(t)>0;}
 function fmtMoney(n){return Math.round(n).toLocaleString('ru-RU')+' ₽';}
+/* список желаний — второй блок страницы «Покупки» */
+function wishBlock(){
+    var ws=(state.wishes||[]).slice().sort(function(a,b){
+      if((a.status==='bought')!==(b.status==='bought'))return a.status==='bought'?1:-1;
+      return 0;
+    });
+    var h=addOpen.wish?'<div class="groupblock"><h3>Новое желание</h3><div class="addrow" style="margin-top:0"><input type="text" id="wish-new" placeholder="Что хотите купить…">'
+      +'<input type="text" id="wish-new-target" placeholder="Целевая цена" style="width:120px">'
+      +'<button class="btn" data-a="add-wish">Добавить</button></div></div>':'';
+    ws.forEach(function(w){
+      var tgt=moneyNum(w.target),last=monPrice(w)||moneyNum(w.last);
+      var hit=w.status!=='bought'&&tgt&&last&&last<=tgt;
+      h+='<div class="wish'+(hit?' hit':'')+(w.status==='bought'?' bought':'')+'">'
+        +'<div class="wish-top"><span>'+(w.status==='bought'?'✅':'⭐')+'</span>'
+        +'<input value="'+esc(w.title)+'" data-f="wish-title" data-id="'+w.id+'" aria-label="Название">'
+        +'<button class="btn ghost" style="padding:5px 10px;font-size:12.5px" data-a="wish-bought" data-id="'+w.id+'">'+(w.status==='bought'?'Вернуть':'Куплено')+'</button>'
+        +'<button class="x" title="Удалить" data-a="del-wish" data-id="'+w.id+'">✕</button></div>'
+        +'<div class="wish-prices">'
+        +'<label>цель</label><input value="'+esc(w.target||'')+'" data-f="wish-target" data-id="'+w.id+'" placeholder="15 000">'
+        +'<label>сейчас</label><input value="'+esc(w.last||'')+'" data-f="wish-last" data-id="'+w.id+'" placeholder="обновите цену">'
+        +(w.min?'<span class="wish-meta">минимум: '+esc(w.min)+'</span>':'')
+        +(w.lastAt?'<span class="wish-meta">обновлено '+fmtDue(w.lastAt)+'</span>':'')
+        +monHtml(w)
+        +(hit?'<span class="wish-hit">🎯 цена достигла цели</span>':'')
+        +'</div><div>';
+      (w.links||[]).forEach(function(l){
+        h+='<span class="mlink"><a class="mlink" style="margin:0;padding:0;background:none" href="'+esc(l.url)+'" target="_blank" rel="noopener">'+(MARKETS[l.market]||'Ссылка')+' ↗</a>'
+          +'<button class="x" title="Убрать ссылку" data-a="del-wish-link" data-id="'+w.id+'" data-sub="'+l.id+'">✕</button></span>';
+      });
+      h+='</div><div class="addrow"><select id="wl-market-'+w.id+'" aria-label="Площадка">';
+      Object.keys(MARKETS).forEach(function(mk){h+='<option value="'+mk+'">'+MARKETS[mk]+'</option>';});
+      h+='</select><input type="text" id="wl-url-'+w.id+'" placeholder="Ссылка на товар…">'
+        +'<button class="btn ghost" data-a="add-wish-link" data-id="'+w.id+'">Добавить</button></div>'
+        +'</div>';
+    });
+    if(!ws.length)h+='<div class="empty">Пока пусто. Добавьте первое желание — название и целевую цену.</div>';
+    var ozonN=ws.filter(function(w){return w.status!=='bought'&&(w.links||[]).some(function(l){return l.market==='ozon';});}).length;
+    if(ozonN)h+='<div class="btnrow" style="margin-top:14px">'
+      +(YD.ready()?'<button class="btn ghost" data-a="wish-refresh">Обновить цены монитора</button>':'')
+      +'<button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
+      +'';
+  return h;
+}
+function secRow(label,view,n){
+  var on=!!addOpen[view];
+  return '<div class="sechead"><h3>'+label+(n!=null?' <span class="n mono">'+n+'</span>':'')+'</h3><button class="btn plusbtn'+(on?' ghost':'')+'" data-a="add-toggle" data-v="'+view+'" title="Добавить" aria-label="Добавить">'+(on?'✕':'＋')+'</button></div>';
+}
 function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
   var h='<div class="row'+(x.done?' done':'')+'">'
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
