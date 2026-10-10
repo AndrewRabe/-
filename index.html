@@ -1787,7 +1787,7 @@ function navSections(){
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
     {title:'Сводки',items:[
-      {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
+      {v:'events',label:'Мероприятия',n:((state.birthdays||[]).length+(state.events||[]).length)||null,icon:'🎉'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
       {v:'sales',label:'Продажи',n:state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}).length||null,icon:'💰'},
     ]},
@@ -1986,7 +1986,7 @@ function renderMain(){
       h+='<div class="row"><span class="t"><button data-a="go" data-v="tasks">…и ещё '+(due.length-7)+'</button></span></div>';
     bdSoon.forEach(function(x){
       h+='<div class="row"><span class="ev-time">🎂</span>'
-        +'<span class="t" data-a="go" data-v="bd" style="cursor:pointer">'+esc(x.bd.name)+'</span>'
+        +'<span class="t" data-a="go" data-v="events" style="cursor:pointer">'+esc(x.bd.name)+'</span>'
         +'<span class="due '+(x.w.days===0?'today':'')+'">'+esc(x.w.text)+'</span></div>';
     });
     if(!due.length&&!evT.length&&!bdSoon.length)
@@ -2466,27 +2466,35 @@ function renderMain(){
           +noPlace.slice(0,40).map(function(it){return '<span class="pl-chip" data-a="open" data-id="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</span>';}).join('')
           +'</div></div>';
     }
-  }else if(v==='bd'){
-    var bds=(state.birthdays||[]).slice().sort(function(a,b){return bdWhen(a).days-bdWhen(b).days;});
-    h=title('🎂 Дни рождения',bds.length)
-      +plusRow('bd')
-      +(addOpen.bd?'<div class="groupblock"><h3>Новый день рождения</h3><div class="addrow" style="margin-top:0">'
-      +'<input type="text" id="bd-name" placeholder="Имя">'
-      +'<input type="date" id="bd-date" title="Дата рождения">'
-      +'<button class="btn" data-a="add-bd">Добавить</button></div></div>':'');
-    if(bds.length){
-      h+='<div class="groupblock"><h3>Ближайшие</h3>'
-        +'';
-      bds.forEach(function(bd){
-        var w=bdWhen(bd);
-        h+='<div class="bd '+w.cls+'"><span class="ic">🎂</span>'
-          +'<input class="nm" value="'+esc(bd.name)+'" data-f="bd-name" data-id="'+bd.id+'" aria-label="Имя" style="background:transparent;border-color:transparent">'
-          +'<input type="date" value="'+esc(bd.date)+'" data-f="bd-date" data-id="'+bd.id+'" class="duein" title="Дата рождения">'
-          +'<span class="when">'+w.text+'</span>'
-          +'<button class="x" title="Удалить" data-a="del-bd" data-id="'+bd.id+'">✕</button></div>';
-      });
-      h+='</div>';
-    }else h+='<div class="empty">Пока пусто. Добавьте вручную или загрузите из календаря: ⚙ → «Добавить мероприятия из файла» (.ics).</div>';
+  }else if(v==='events'){
+    var evTd=todayStr(),evList=[];
+    (state.events||[]).forEach(function(ev){
+      var nx='';
+      for(var k=0;k<=400;k++){var ds=shiftDay(evTd,k);if(eventOn(ev,ds)){nx=ds;break;}}
+      if(nx)evList.push({ev:ev,next:nx});
+    });
+    evList.sort(function(x,y){return x.next<y.next?-1:x.next>y.next?1:((x.ev.time||'')<(y.ev.time||'')?-1:1);});
+    h=title('🎉 Мероприятия',evList.length+(state.birthdays||[]).length)
+      +secRow('Мероприятия','events',evList.length)
+      +(addOpen.events?'<div class="groupblock"><h3>Новое мероприятие</h3><div class="addrow" style="margin-top:0">'
+        +'<input type="text" id="evn-title" placeholder="Что за мероприятие…">'
+        +'<input type="date" id="evn-date" value="'+evTd+'" title="Дата">'
+        +'<input type="time" id="evn-time" title="Время (необязательно)" style="width:96px">'
+        +'<select id="evn-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
+        +'<button class="btn" data-a="evn-add">Добавить</button></div></div>':'')
+      +(evList.length?'<div class="groupblock">'+evList.slice(0,80).map(function(e){
+          var lit=e.ev.itemId?find(e.ev.itemId):null,dd=daysBetween(evTd,e.next);
+          return '<div class="row"><span class="ev-time" style="min-width:48px">'+fmtDue(e.next)+'</span>'
+            +'<span class="ev-time">'+(e.ev.time?esc(e.ev.time):'•')+'</span>'
+            +'<span class="t">'+esc(e.ev.title)+'</span>'
+            +(e.ev.repeat?'<span class="rep">'+REPEATS[e.ev.repeat]+'</span>':'')
+            +(lit?'<span class="src" data-a="open" data-id="'+lit.id+'">'+esc(lit.name)+'</span>':'')
+            +'<span class="wish-meta">'+(dd===0?'сегодня':dd===1?'завтра':'через '+plural(dd,['день','дня','дней']))+'</span>'
+            +'<button class="x" title="'+(e.ev.repeat?'Удалить все повторы':'Удалить')+'" data-a="del-event" data-sub="'+e.ev.id+'">✕</button></div>';
+        }).join('')+'</div>'
+        :'<div class="empty">Ближайших мероприятий нет. Нажмите «＋» и добавьте первое.</div>')
+      +secRow('Дни рождения','bd',(state.birthdays||[]).length)
+      +bdBlock();
   }else if(v==='buy'){
     if(YD.ready()&&!ydPricesP)ydPricesLoad().then(function(m){if(Object.keys(m).length&&route.view==='buy')renderMain();});
     var bl2=[];
@@ -2631,6 +2639,28 @@ function wishBlock(){
       +(YD.ready()?'<button class="btn ghost" data-a="wish-refresh">Обновить цены монитора</button>':'')
       +'<button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
       +'';
+  return h;
+}
+/* дни рождения — второй блок страницы «Мероприятия» */
+function bdBlock(){
+    var bds=(state.birthdays||[]).slice().sort(function(a,b){return bdWhen(a).days-bdWhen(b).days;});
+    var h=(addOpen.bd?'<div class="groupblock"><h3>Новый день рождения</h3><div class="addrow" style="margin-top:0">'
+      +'<input type="text" id="bd-name" placeholder="Имя">'
+      +'<input type="date" id="bd-date" title="Дата рождения">'
+      +'<button class="btn" data-a="add-bd">Добавить</button></div></div>':'');
+    if(bds.length){
+      h+='<div class="groupblock"><h3>Ближайшие</h3>'
+        +'';
+      bds.forEach(function(bd){
+        var w=bdWhen(bd);
+        h+='<div class="bd '+w.cls+'"><span class="ic">🎂</span>'
+          +'<input class="nm" value="'+esc(bd.name)+'" data-f="bd-name" data-id="'+bd.id+'" aria-label="Имя" style="background:transparent;border-color:transparent">'
+          +'<input type="date" value="'+esc(bd.date)+'" data-f="bd-date" data-id="'+bd.id+'" class="duein" title="Дата рождения">'
+          +'<span class="when">'+w.text+'</span>'
+          +'<button class="x" title="Удалить" data-a="del-bd" data-id="'+bd.id+'">✕</button></div>';
+      });
+      h+='</div>';
+    }else h+='<div class="empty">Пока пусто. Добавьте вручную или загрузите из календаря: ⚙ → «Добавить мероприятия из файла» (.ics).</div>';
   return h;
 }
 function secRow(label,view,n){
@@ -4749,7 +4779,7 @@ function onClick(e){
   else if(a==='del-group'){delGroup=id;renderMain();}
   else if(a==='add-toggle'){
     var av=b.dataset.v;addOpen[av]=!addOpen[av];
-    if(addOpen[av])refocus={tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
+    if(addOpen[av])refocus={events:'evn-title',tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
     renderMain();
   }
   else if(a==='nt-add'){
@@ -4781,6 +4811,17 @@ function onClick(e){
     markUndo();
     nit.tasks=nit.tasks||[];nit.tasks.push(ne);
     refocus='nt-text';touch();renderAll();
+  }
+  else if(a==='evn-add'){
+    var eti=document.getElementById('evn-title'),etx=eti?eti.value.trim():'';
+    var eda=document.getElementById('evn-date');
+    if(!etx){if(eti)eti.focus();return;}
+    if(!eda||!eda.value){if(eda)eda.focus();return;}
+    var etm=document.getElementById('evn-time'),erp=document.getElementById('evn-repeat');
+    markUndo();
+    state.events=state.events||[];
+    state.events.push({id:uid(),title:etx,date:eda.value,time:(etm&&etm.value)||'',itemId:'',repeat:(erp&&erp.value)||''});
+    refocus='evn-title';touch();renderAll();
   }
   else if(a==='pay-open'){addingPay=!addingPay;if(addingPay)refocus='pay-text';renderMain();}
   else if(a==='pay-add'){
@@ -5174,7 +5215,7 @@ function onClick(e){
       route.item=id;confirmDel=false;editingInstr={};
       renderMain();renderDetail();
     }else if(kind==='bd'){
-      route.view='bd';renderNav();renderMain();
+      route.view='events';renderNav();renderMain();
     }else if(kind==='view'){
       route.view=id;renderNav();renderMain();
     }else if(kind==='diary'){
