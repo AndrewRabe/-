@@ -1753,10 +1753,6 @@ function navSections(){
   cats.push({v:'sale',label:'На продажу',n:saleN,icon:'💰'});
   return [
     {title:'Имущество',items:cats},
-    {title:'Продажа',items:[
-      {v:'selling',label:'Сводка',n:saleN||null,icon:'📊'},
-      {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'}
-    ]},
     {title:'Задачи',items:[
       {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
@@ -1774,6 +1770,10 @@ function navSections(){
       {v:'workouts',label:'Тренировки',n:workoutsOn(today).length||null,icon:'🏋'},
       {v:'food',label:'Питание',n:mealsOn(today).reduce(function(a,m){return a+(m.dishes||[]).length;},0)||null,icon:'🍽'}
     ]},
+    {title:'Продажа',items:[
+      {v:'selling',label:'Сводка',n:saleN||null,icon:'📊'},
+      {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'}
+    ]}
   ];
 }
 function renderNav(){
