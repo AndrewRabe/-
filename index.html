@@ -1723,14 +1723,13 @@ function migrateBuy(){
   var n=0;
   (state.items||[]).forEach(function(it){
     if(!it.plans||!it.plans.length)return;
-    var keep=[];
+    it.tasks=it.tasks||[];
     it.plans.forEach(function(p){
-      if(p.kind==='improve'){keep.push(p);return;}
-      it.tasks=it.tasks||[];
-      it.tasks.push({id:p.id||uid(),text:p.text,done:!!p.done,buy:true});
-      n++;
+      var t={id:p.id||uid(),text:p.text,done:!!p.done};
+      if(p.kind==='improve')t.improve=true;else t.buy=true;
+      it.tasks.push(t);n++;
     });
-    it.plans=keep;
+    it.plans=[];
   });
   return n;
 }
@@ -1763,9 +1762,8 @@ function nv(view,label,count,icon){
 function navSections(){
   var act=state.items.filter(visible),objs=act.filter(notInbox);
   var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0,sellN2=0;
-  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);
-    (it.plans||[]).forEach(function(p){if(!p.done&&p.kind==='improve')impN++;});
-    (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)buyN++;if(!t.done&&t.sell)sellN2++;});doneN+=(it.tasks||[]).length-openCount(it.tasks);
+  act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&isGeneral(t))tasksN++;});plansN+=openCount(it.plans);
+    (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)buyN++;if(!t.done&&t.improve)impN++;if(!t.done&&t.sell)sellN2++;});doneN+=(it.tasks||[]).length-openCount(it.tasks);
     (it.tasks||[]).forEach(function(t){if(!t.done&&isPay(t))payN++;});});
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
@@ -1778,7 +1776,7 @@ function navSections(){
   return [
     {title:'Имущество',items:cats},
     {title:'Задачи',items:[
-      {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
+      {v:'tasks',label:'Общие',n:tasksN,icon:'☑'},
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
       {v:'buy',label:'Покупки',n:(buyN+(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length)||null,icon:'🛒'},
       {v:'improve',label:'Планы',n:impN,icon:'🛠'},
@@ -2023,31 +2021,21 @@ function renderMain(){
       +gridHTML(list2,v==='sale'?'Отметьте объект «На продажу» в его карточке — он появится здесь.':'Отправляйте сюда то, чем больше не пользуетесь: продали, выбросили, отдали.');
   }else if(v==='tasks'){
     var allOpen=0;
-    state.items.filter(visible).forEach(function(it){allOpen+=openCount(it.tasks);});
-    h=title('☑ Все задачи',allOpen);var any=false;
+    state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&isGeneral(t))allOpen++;});});
+    h=title('☑ Общие задачи',allOpen);var any=false;
     if(taskTab!=='all'&&taskTab!=='obj'&&taskTab!=='none'&&taskTab!=='sell'&&!groupName(taskTab))taskTab='all';
-    var taskForm='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
-        +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
-        +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
-        +'<input type="time" id="sum-task-time" title="Время (необязательно)" style="width:96px">'
-        +'<select id="sum-task-repeat" title="Повтор">'
-        +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
-        +'</select>'
-        +itemSelect('sum-task-item','Объект',true)
-        +((state.taskGroups||[]).length?'<select id="sum-task-group" aria-label="Группа"><option value="">без группы</option>'
-          +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
-        +'<button class="btn" data-a="sum-add-task">Добавить</button></div></div>';
+    var taskForm=newTaskForm('general');
     h+=plusRow('tasks')+(addOpen.tasks?taskForm:'');
     var tc={all:0,obj:0,none:0,sell:0};(state.taskGroups||[]).forEach(function(g){tc[g.id]=0;});
     state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
-      if(t.done)return;
+      if(t.done||!isGeneral(t))return;
       tc.all++;if(!isInbox(it))tc.obj++;if(t.sell)tc.sell++;
       if(t.g&&groupName(t.g))tc[t.g]++;else tc.none++;
     });});
     function tabBtn(v,label,n){return '<button data-a="task-tab" data-v="'+v+'"'+(taskTab===v?' class="on"':'')+'>'+esc(label)+(n?' · '+n:'')+'</button>';}
     h+='<div class="seg">'+tabBtn('all','Все',tc.all)
       +(state.taskGroups||[]).map(function(g){return tabBtn(g.id,g.name,tc[g.id]);}).join('')
-      +tabBtn('none','Без группы',tc.none)+tabBtn('obj','По объектам',tc.obj)+(tc.sell?tabBtn('sell','Выложить',tc.sell):'')
+      +tabBtn('none','Без группы',tc.none)+tabBtn('obj','По объектам',tc.obj)
       +'<button data-a="grp-add-open" title="Новая группа">＋ Группа</button></div>';
     if(addingGroup)
       h+='<div class="addrow" style="margin:0 0 12px"><input type="text" id="grp-new" placeholder="Название группы, например «Работа»"><button class="btn" data-a="grp-add">Создать</button></div>';
@@ -2058,7 +2046,7 @@ function renderMain(){
       return (isInbox(b)?1:0)-(isInbox(a)?1:0);       /* «Без объекта» наверх */
     });
     withTasks.forEach(function(it){
-      var list=(it.tasks||[]).filter(function(t){return !t.done&&taskInTab(it,t,taskTab);});
+      var list=(it.tasks||[]).filter(function(t){return !t.done&&isGeneral(t)&&taskInTab(it,t,taskTab);});
       if(!list.length)return;any=true;
       list.sort(function(a,b){return (a.due||'~')<(b.due||'~')?-1:1;});
       var opened=list.length;
@@ -2092,14 +2080,7 @@ function renderMain(){
     h=title('💳 Платежи',pays.length)
       +'<div class="stat-tiles"><div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
       +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>'
-      +'<div class="addrow" style="margin:0 0 12px"><button class="btn plusbtn'+(addingPay?' ghost':'')+'" data-a="pay-open" title="Добавить" aria-label="Добавить">'+(addingPay?'✕':'＋')+'</button></div>'
-      +(addingPay?'<div class="groupblock"><h3>Новый платёж</h3><div class="addrow" style="margin-top:0">'
-      +'<input type="text" id="pay-text" placeholder="Что оплатить, например «Интернет»">'
-      +'<input type="text" inputmode="decimal" id="pay-sum" placeholder="Сумма, ₽" style="flex:none;width:110px">'
-      +'<input type="date" id="pay-due" title="Срок оплаты">'
-      +'<select id="pay-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
-      +itemSelect('pay-item','Объект',true)
-      +'<button class="btn" data-a="pay-add">Добавить</button></div></div>':'');
+      +plusRow('pay')+(addOpen.pay?newTaskForm('pay'):'');
     if(!pays.length)h+='<div class="empty">Платежей пока нет. Нажмите «＋» и добавьте первый: аренда, интернет, страховка, кредит.</div>';
     else h+='<div class="groupblock">'+pays.map(function(x){
       return rowHTML(x.it.id,'tasks',x.t,true,true,false,false,isInbox(x.it)?'':x.it.name);
@@ -2417,13 +2398,7 @@ function renderMain(){
     tl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
     var cand=state.items.filter(visible).filter(notInbox).filter(function(i){return i.status!=='sale';});
     h=title('📤 Выложить на продажу',tl.length)+plusRow('tolist')
-      +(addOpen.tolist?'<div class="groupblock"><h3>Новая задача</h3>'+(cand.length
-        ?'<div class="addrow" style="margin-top:0"><select id="sell-item" aria-label="Что выложить">'
-          +cand.map(function(i){return '<option value="'+i.id+'">'+CATS[catOf(i)].icon+' '+esc(i.name)+'</option>';}).join('')+'</select>'
-          +'<input type="date" id="sell-due" title="Когда выложить (необязательно)">'
-          +'<input type="text" id="sell-note" placeholder="Комментарий (необязательно)">'
-          +'<button class="btn" data-a="sell-add">Добавить</button></div>'
-        :'<div class="addrow" style="margin-top:0"><span class="wish-meta">Нет объектов, которые можно выложить.</span></div>')+'</div>':'')
+      +(addOpen.tolist?newTaskForm('sell'):'')
       +(tl.length?'<div class="groupblock">'+tl.map(function(e){
           return rowHTML(e.it.id,'tasks',e.t,true,false,false,false,'');
         }).join('')+'</div>'
@@ -2500,11 +2475,7 @@ function renderMain(){
     var wishOpenN=(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length;
     h=title('🛒 Покупки',bl2.length+wishOpenN)
       +secRow('Список покупок','buy',bl2.length)
-      +(addOpen.buy?'<div class="groupblock"><h3>Новая покупка</h3><div class="addrow" style="margin-top:0">'
-        +'<input type="text" id="sum-buy" placeholder="Что купить…">'
-        +'<input type="date" id="sum-buy-due" title="Когда нужно (необязательно)">'
-        +itemSelect('sum-buy-item','Объект',true)
-        +'<button class="btn" data-a="sum-add-buy">Добавить</button></div></div>':'')
+      +(addOpen.buy?newTaskForm('buy'):'')
       +(bl2.length?'<div class="groupblock">'+bl2.map(function(e){
           return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
         }).join('')+'</div>'
@@ -2514,22 +2485,14 @@ function renderMain(){
   }else if(v==='improve'){
     var pl=[];
     state.items.filter(visible).forEach(function(it){
-      (it.plans||[]).forEach(function(p){if(!p.done&&p.kind==='improve')pl.push({it:it,p:p});});
+      (it.tasks||[]).forEach(function(t){if(!t.done&&t.improve)pl.push({it:it,t:t});});
     });
-    h=title('🛠 Планы',pl.length)+plusRow('improve');
-    if(addOpen.improve)
-      h+=state.items.filter(visible).filter(notInbox).length
-        ?'<div class="groupblock"><h3>Новый план</h3><div class="addrow">'
-          +'<input type="text" id="sum-plan" placeholder="Что улучшить или сделать…">'
-          +itemSelect('sum-plan-item','Объект')
-          +'<button class="btn" data-a="sum-add-plan">Добавить</button></div></div>'
-        :'<div class="empty">Планы привязываются к объекту — сначала заведите объект.</div>';
-    h+=pl.length?'<div class="groupblock">'+pl.map(function(e){
-        return '<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">'
-          +'<span class="t">'+esc(e.p.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
-          +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">✕</button></div>';
-      }).join('')+'</div>'
-      :'<div class="empty">Планов пока нет — нажмите «＋» и добавьте первый.</div>';
+    pl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    h=title('🛠 Планы',pl.length)+plusRow('improve')+(addOpen.improve?newTaskForm('improve'):'')
+      +(pl.length?'<div class="groupblock">'+pl.map(function(e){
+          return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
+        }).join('')+'</div>'
+        :'<div class="empty">Планов пока нет — нажмите «＋» и добавьте первый.</div>');
   }
   m.innerHTML=h;
   if(refocus){var rf=document.getElementById(refocus);if(rf){rf.focus();refocus=null;}}
@@ -2543,6 +2506,24 @@ function itemSelect(id,label,withInbox){
     +'</select>';
 }
 /* группы задач: независимы от объектов, у задачи необязательное поле g */
+/* все виды задач создаются одной формой; тип — необязательная пометка у обычной задачи */
+var TASK_TYPES={general:'Общая',buy:'Покупка',pay:'Платёж',improve:'План',sell:'Выложить на продажу'};
+function isGeneral(t){return !t.buy&&!t.sell&&!t.improve&&!isPay(t);}
+function newTaskForm(defType){
+  var groups=(state.taskGroups||[]).length
+    ?'<select id="nt-group" aria-label="Группа"><option value="">без группы</option>'
+      +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'';
+  return '<div class="groupblock"><h3>Новая задача</h3><div class="addrow" style="margin-top:0">'
+    +'<select id="nt-type" data-f="nt-type" aria-label="Тип задачи">'
+    +Object.keys(TASK_TYPES).map(function(k){return '<option value="'+k+'"'+(k===defType?' selected':'')+'>'+TASK_TYPES[k]+'</option>';}).join('')+'</select>'
+    +'<input type="text" id="nt-text" placeholder="Что нужно сделать…">'
+    +'<input type="text" inputmode="decimal" id="nt-sum" placeholder="Сумма, ₽" style="flex:none;width:110px'+(defType==='pay'?'':';display:none')+'">'
+    +'<input type="date" id="nt-due" title="Срок (необязательно)">'
+    +'<input type="time" id="nt-time" title="Время (необязательно)" style="width:96px">'
+    +'<select id="nt-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
+    +itemSelect('nt-item','Объект',true)+groups
+    +'<button class="btn" data-a="nt-add">Добавить</button></div></div>';
+}
 /* кнопка «＋» над списком: открывает форму добавления, форма всегда сверху */
 function plusRow(view){
   var on=!!addOpen[view];
@@ -2637,6 +2618,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
     +'<span class="t">'+esc(x.text)+'</span>'
+    +(kind==='tasks'&&x.improve&&route.view!=='improve'?'<span class="rep" title="План">🛠</span>':'')
     +(kind==='tasks'&&x.sell&&route.view!=='tolist'?'<span class="rep" title="Выложить на продажу">📤</span>':'')
     +(kind==='tasks'&&x.buy&&route.view!=='buy'?'<span class="rep" title="Покупка">🛒</span>':'')
     +(kind==='tasks'&&x.buy&&!dueEdit?(x.owned&&find(x.owned)
@@ -3730,6 +3712,7 @@ function mergeState(data){
           if(x.pay)e.pay=true;
           if(x.buy)e.buy=true;
           if(x.sell)e.sell=true;
+          if(x.improve)e.improve=true;
           if(x.sum!=null&&x.sum!=='')e.sum=x.sum;
           if(x.hist)e.hist=x.hist.slice();
           if(x.g){
@@ -4706,11 +4689,7 @@ function onClick(e){
     if(to==='task'){tgt.tasks=tgt.tasks||[];tgt.tasks.push({id:uid(),text:txt,done:false});where='задачи · '+tgt.name;}
     else if(to==='question'){tgt.questions=tgt.questions||[];tgt.questions.push({id:uid(),text:txt,done:false});where='вопросы · '+tgt.name;}
     else if(to==='buy'){tgt.tasks=tgt.tasks||[];tgt.tasks.push({id:uid(),text:txt,done:false,buy:true});where='покупки · '+tgt.name;}
-    else if(to==='improve'){
-      tgt.plans=tgt.plans||[];
-      tgt.plans.push({id:uid(),text:txt,done:false,kind:'improve'});
-      where='улучшения · '+tgt.name;
-    }
+    else if(to==='improve'){tgt.tasks=tgt.tasks||[];tgt.tasks.push({id:uid(),text:txt,done:false,improve:true});where='планы · '+tgt.name;}
     else if(to==='wish'){
       state.wishes=state.wishes||[];
       state.wishes.push({id:uid(),title:txt,target:'',last:'',min:'',links:[],status:'active'});
@@ -4727,6 +4706,30 @@ function onClick(e){
     var av=b.dataset.v;addOpen[av]=!addOpen[av];
     if(addOpen[av])refocus={tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
     renderMain();
+  }
+  else if(a==='nt-add'){
+    var ntt=document.getElementById('nt-type'),type=ntt?ntt.value:'general';
+    var nti=document.getElementById('nt-text'),ntx=nti?nti.value.trim():'';
+    var nio=document.getElementById('nt-item'),nit=(nio&&nio.value===INBOX)?inboxItem():find(nio&&nio.value);
+    if(!nit)nit=inboxItem();
+    if(type==='sell'){
+      if(isInbox(nit)){toast('Для «выложить на продажу» выберите вещь в поле «Объект»');return;}
+      if(!ntx)ntx='Выложить на продажу: '+nit.name;
+    }
+    if(!ntx){if(nti)nti.focus();return;}
+    var ne={id:uid(),text:ntx,done:false};
+    if(type==='buy')ne.buy=true;
+    else if(type==='improve')ne.improve=true;
+    else if(type==='sell')ne.sell=true;
+    else if(type==='pay'){ne.pay=true;var nsm=document.getElementById('nt-sum'),nsv=nsm?num(nsm.value):0;if(nsv>0)ne.sum=nsv;}
+    var ndu=document.getElementById('nt-due'),ntm=document.getElementById('nt-time'),nrp=document.getElementById('nt-repeat'),ngr=document.getElementById('nt-group');
+    if(ndu&&ndu.value)ne.due=ndu.value;
+    if(ntm&&ntm.value){ne.time=ntm.value;if(!ne.due)ne.due=todayStr();}
+    if(nrp&&nrp.value){ne.repeat=nrp.value;if(!ne.due)ne.due=todayStr();}
+    if(ngr&&ngr.value)ne.g=ngr.value;
+    markUndo();
+    nit.tasks=nit.tasks||[];nit.tasks.push(ne);
+    refocus='nt-text';touch();renderAll();
   }
   else if(a==='pay-open'){addingPay=!addingPay;if(addingPay)refocus='pay-text';renderMain();}
   else if(a==='pay-add'){
@@ -4921,8 +4924,7 @@ function onClick(e){
     if(!text){if(inp)inp.focus();return;}
     var entry={id:uid(),text:text,done:false};
     var kindKey=b.dataset.kind;
-    if(kindKey==='plans'&&newPlanKind==='buy'){kindKey='tasks';entry.buy=true;}      /* покупка — это задача */
-    else if(kindKey==='plans')entry.kind=newPlanKind;
+    if(kindKey==='plans'){kindKey='tasks';if(newPlanKind==='buy')entry.buy=true;else entry.improve=true;}      /* покупки и планы — это задачи */
     if(b.dataset.kind==='tasks'){
       var dd=document.getElementById('add-task-due');if(dd&&dd.value)entry.due=dd.value;
       var tt=document.getElementById('add-task-time');if(tt&&tt.value){entry.time=tt.value;if(!entry.due)entry.due=todayStr();}
@@ -5413,6 +5415,11 @@ function onChange(e){
   if(f==='w-note'){
     (state.workouts||[]).forEach(function(x){if(x.id===t.dataset.id)x.note=t.value;});
     touch();return;
+  }
+  if(f==='nt-type'){
+    var nsh=document.getElementById('nt-sum');
+    if(nsh)nsh.style.display=t.value==='pay'?'':'none';
+    return;
   }
   if(f==='w-place-new'){
     var gi=document.getElementById('w-gym');
