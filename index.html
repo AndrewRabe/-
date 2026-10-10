@@ -1760,10 +1760,10 @@ function nv(view,label,count,icon){
 /* один перечень разделов: из него строится и боковое меню, и плитки главной */
 function navSections(){
   var act=state.items.filter(visible),objs=act.filter(notInbox);
-  var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0;
+  var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0,sellN2=0;
   act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);
     (it.plans||[]).forEach(function(p){if(!p.done&&p.kind==='improve')impN++;});
-    (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)buyN++;});doneN+=(it.tasks||[]).length-openCount(it.tasks);
+    (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)buyN++;if(!t.done&&t.sell)sellN2++;});doneN+=(it.tasks||[]).length-openCount(it.tasks);
     (it.tasks||[]).forEach(function(t){if(!t.done&&isPay(t))payN++;});});
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
@@ -1794,6 +1794,7 @@ function navSections(){
     ]},
     {title:'Продажа',items:[
       {v:'selling',label:'Сводка',n:saleN||null,icon:'📊'},
+      {v:'tolist',label:'Выложить',n:sellN2||null,icon:'📤'},
       {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'}
     ]}
   ];
@@ -1917,7 +1918,7 @@ function renderMain(){
     var allOpen=0;
     state.items.filter(visible).forEach(function(it){allOpen+=openCount(it.tasks);});
     h=title('☑ Все задачи',allOpen);var any=false;
-    if(taskTab!=='all'&&taskTab!=='obj'&&taskTab!=='none'&&!groupName(taskTab))taskTab='all';
+    if(taskTab!=='all'&&taskTab!=='obj'&&taskTab!=='none'&&taskTab!=='sell'&&!groupName(taskTab))taskTab='all';
     var taskForm='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
         +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
         +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
@@ -1930,16 +1931,16 @@ function renderMain(){
           +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
         +'<button class="btn" data-a="sum-add-task">Добавить</button></div></div>';
     h+=plusRow('tasks')+(addOpen.tasks?taskForm:'');
-    var tc={all:0,obj:0,none:0};(state.taskGroups||[]).forEach(function(g){tc[g.id]=0;});
+    var tc={all:0,obj:0,none:0,sell:0};(state.taskGroups||[]).forEach(function(g){tc[g.id]=0;});
     state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
       if(t.done)return;
-      tc.all++;if(!isInbox(it))tc.obj++;
+      tc.all++;if(!isInbox(it))tc.obj++;if(t.sell)tc.sell++;
       if(t.g&&groupName(t.g))tc[t.g]++;else tc.none++;
     });});
     function tabBtn(v,label,n){return '<button data-a="task-tab" data-v="'+v+'"'+(taskTab===v?' class="on"':'')+'>'+esc(label)+(n?' · '+n:'')+'</button>';}
     h+='<div class="seg">'+tabBtn('all','Все',tc.all)
       +(state.taskGroups||[]).map(function(g){return tabBtn(g.id,g.name,tc[g.id]);}).join('')
-      +tabBtn('none','Без группы',tc.none)+tabBtn('obj','По объектам',tc.obj)
+      +tabBtn('none','Без группы',tc.none)+tabBtn('obj','По объектам',tc.obj)+(tc.sell?tabBtn('sell','Выложить',tc.sell):'')
       +'<button data-a="grp-add-open" title="Новая группа">＋ Группа</button></div>';
     if(addingGroup)
       h+='<div class="addrow" style="margin:0 0 12px"><input type="text" id="grp-new" placeholder="Название группы, например «Работа»"><button class="btn" data-a="grp-add">Создать</button></div>';
@@ -2327,6 +2328,25 @@ function renderMain(){
         }).join('')+'</div>';
     });
     if(!sl.length)h+='<div class="empty">Сейчас ничего не продаётся. Отметьте объект «На продажу» в его карточке — он появится здесь.</div>';
+  }else if(v==='tolist'){
+    var tl=[];
+    state.items.filter(visible).forEach(function(it){
+      (it.tasks||[]).forEach(function(t){if(!t.done&&t.sell)tl.push({it:it,t:t});});
+    });
+    tl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    var cand=state.items.filter(visible).filter(notInbox).filter(function(i){return i.status!=='sale';});
+    h=title('📤 Выложить на продажу',tl.length)+plusRow('tolist')
+      +(addOpen.tolist?'<div class="groupblock"><h3>Новая задача</h3>'+(cand.length
+        ?'<div class="addrow" style="margin-top:0"><select id="sell-item" aria-label="Что выложить">'
+          +cand.map(function(i){return '<option value="'+i.id+'">'+CATS[catOf(i)].icon+' '+esc(i.name)+'</option>';}).join('')+'</select>'
+          +'<input type="date" id="sell-due" title="Когда выложить (необязательно)">'
+          +'<input type="text" id="sell-note" placeholder="Комментарий (необязательно)">'
+          +'<button class="btn" data-a="sell-add">Добавить</button></div>'
+        :'<div class="addrow" style="margin-top:0"><span class="wish-meta">Нет объектов, которые можно выложить.</span></div>')+'</div>':'')
+      +(tl.length?'<div class="groupblock">'+tl.map(function(e){
+          return rowHTML(e.it.id,'tasks',e.t,true,false,false,false,'');
+        }).join('')+'</div>'
+        :'<div class="empty">Задач «выложить на продажу» нет. Нажмите «＋», выберите вещь — задача появится здесь и в «Задачах».</div>');
   }else if(v==='sold'){
     var all=soldItems();
     var list3=all.filter(function(it){return inPeriod((it.sold||{}).date,soldPeriod);})
@@ -2504,6 +2524,7 @@ function groupName(id){var n='';(state.taskGroups||[]).forEach(function(g){if(g.
 function taskInTab(it,t,tab){
   if(tab==='all')return true;
   if(tab==='obj')return !isInbox(it);
+  if(tab==='sell')return !!t.sell;
   if(tab==='none')return !t.g||!groupName(t.g);
   return t.g===tab;
 }
@@ -2588,6 +2609,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
     +'<span class="t">'+esc(x.text)+'</span>'
+    +(kind==='tasks'&&x.sell&&route.view!=='tolist'?'<span class="rep" title="Выложить на продажу">📤</span>':'')
     +(kind==='tasks'&&x.buy&&route.view!=='buy'?'<span class="rep" title="Покупка">🛒</span>':'')
     +(kind==='tasks'&&x.buy&&!dueEdit?(x.owned&&find(x.owned)
         ?'<button class="x" title="Открыть в имуществе" data-a="open" data-id="'+x.owned+'">📦✓</button>'
@@ -2638,6 +2660,8 @@ function renderDetail(){
     +'<button class="'+(it.status==='sold'?'on':'')+'" data-a="status" data-id="'+it.id+'" data-v="sold">Продано</button>'
     +'<button class="'+(it.status==='archive'?'on':'')+'" data-a="status" data-id="'+it.id+'" data-v="archive">В архив</button>'
     +'</span></div>';
+  if(it.status==='active'||it.status==='archive')
+    h+='<div class="btnrow" style="margin:-4px 0 10px"><button class="btn ghost" data-a="sell-task" data-id="'+it.id+'">📤 Задача: выложить на продажу</button></div>';
 
   if(it.status==='sold'){
     var sd=soldOf(it),fee=soldFee(sd),net=soldNet(sd);
@@ -3000,6 +3024,18 @@ function openBuyOwn(itemId,taskId){
     +'<button class="btn" data-a="buy-own-go" data-id="'+itemId+'" data-sub="'+taskId+'">В имущество</button></div></div>';
   m.innerHTML=h;
   document.getElementById('bo-name').focus();
+}
+/* задача «выложить» выполнена — предлагаем перевести вещь в статус «На продажу» */
+function openSellStatus(itemId){
+  var it=find(itemId);
+  if(!it)return;
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  m.innerHTML='<div class="modal-box"><h3>Вещь выложена?</h3>'
+    +'<p style="margin:0 0 10px">Перевести «'+esc(it.name)+'» в статус «На продажу»?</p>'
+    +'<label for="sl-price">Цена, ₽ (необязательно)</label><input id="sl-price" type="text" inputmode="decimal" value="'+esc(it.price||'')+'">'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Не сейчас</button>'
+    +'<button class="btn" data-a="sell-go" data-id="'+itemId+'">На продажу</button></div></div>';
 }
 function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
@@ -3661,6 +3697,7 @@ function mergeState(data){
           if(x.kind)e.kind=x.kind;
           if(x.pay)e.pay=true;
           if(x.buy)e.buy=true;
+          if(x.sell)e.sell=true;
           if(x.sum!=null&&x.sum!=='')e.sum=x.sum;
           if(x.hist)e.hist=x.hist.slice();
           if(x.g){
@@ -4764,10 +4801,11 @@ function onClick(e){
   }
   else if(a==='tgl'&&it){
     markUndo();
-    var moved='',askBuy=null;
+    var moved='',askBuy=null,askSell=null;
     (it[b.dataset.kind]||[]).forEach(function(x){
       if(x.id!==b.dataset.sub)return;
       if(b.dataset.kind==='tasks'&&x.buy&&!x.done&&!x.repeat&&!x.owned)askBuy={item:it.id,task:x.id};
+      if(b.dataset.kind==='tasks'&&x.sell&&!x.done&&!x.repeat&&it.status!=='sale'&&it.status!=='sold')askSell=it.id;
       if(b.dataset.kind==='tasks'&&!x.done&&isPay(x))x.hist=(x.hist||[]).concat([todayStr()]);   /* журнал оплат */
       if(b.dataset.kind==='tasks'&&x.repeat&&!x.done){
         var base=x.due||todayStr();
@@ -4781,6 +4819,31 @@ function onClick(e){
     else toast('Отметка изменена','Отменить');
     touch();renderNav();renderMain();if(route.item)renderDetail();
     if(askBuy)setTimeout(function(){openBuyOwn(askBuy.item,askBuy.task);},200);
+    if(askSell)setTimeout(function(){openSellStatus(askSell);},200);
+  }
+  else if(a==='sell-add'){
+    var sio=document.getElementById('sell-item'),sit2=sio&&find(sio.value);
+    if(!sit2)return;
+    var sdu=document.getElementById('sell-due'),sno=document.getElementById('sell-note');
+    var sent={id:uid(),text:'Выложить на продажу: '+sit2.name+((sno&&sno.value.trim())?' — '+sno.value.trim():''),done:false,sell:true};
+    if(sdu&&sdu.value)sent.due=sdu.value;
+    markUndo();
+    sit2.tasks=sit2.tasks||[];sit2.tasks.push(sent);
+    touch();renderAll();
+  }
+  else if(a==='sell-task'&&it){
+    markUndo();
+    it.tasks=it.tasks||[];
+    it.tasks.push({id:uid(),text:'Выложить на продажу: '+it.name,done:false,sell:true});
+    touch();renderAll();toast('Задача «выложить на продажу» создана','Отменить');
+  }
+  else if(a==='sell-go'&&it){
+    var spr=document.getElementById('sl-price');
+    markUndo();
+    it.status='sale';
+    if(spr&&spr.value.trim())it.price=spr.value.trim();
+    touch();closeModal();renderAll();
+    toast('«'+it.name+'» переведена в «На продажу»','Отменить');
   }
   else if(a==='buy-own'){openBuyOwn(id,b.dataset.sub);}
   else if(a==='buy-own-go'){
