@@ -1433,7 +1433,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null;
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary';
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1913,8 +1913,10 @@ function renderMain(){
     });
   }else if(v==='food'){
     var day=mealsOn(diaryDay);
-    h=title('🍽 Питание',day.reduce(function(a,m){return a+(m.dishes||[]).length;},0))
-      +dayNav()+bookList('dishes','dishbook');
+    var foodTitle=title('🍽 Питание',day.reduce(function(a,m){return a+(m.dishes||[]).length;},0))
+      +'<div class="seg"><button data-a="food-tab" data-v="diary"'+(foodTab==='diary'?' class="on"':'')+'>Дневник</button>'
+      +'<button data-a="food-tab" data-v="dishes"'+(foodTab==='dishes'?' class="on"':'')+'>Мои блюда'+((state.dishes||[]).length?' · '+state.dishes.length:'')+'</button></div>';
+    h=foodTitle+dayNav()+bookList('dishes','dishbook');
     /* показываем только то, что было: любого приёма может не быть, перекусов — несколько.
        Пустой блок появляется по кнопке «＋» и исчезает после добавления блюда */
     if(openSlots._d!==diaryDay)openSlots={_d:diaryDay};
@@ -1962,13 +1964,14 @@ function renderMain(){
         +'<div class="addrow"><button class="btn ghost" data-a="meal-close">Готово</button></div>';
       h+='</div>';
     });
-    if(state.dishes&&state.dishes.length)
-      h+='<div class="groupblock"><h3>Мои блюда<span class="wish-meta" style="margin-left:auto">'+state.dishes.length+'</span></h3>'
-        +bookTop('dishes',200).map(function(x){
-          return '<div class="dish"><span class="t">'+esc(x.name)+'</span>'
-            +'<span class="wish-meta">'+plural(x.n||0,['раз','раза','раз'])+'</span>'
-            +'<button class="x" title="Забыть блюдо" data-a="del-book" data-v="dishes" data-id="'+x.id+'">✕</button></div>';
-        }).join('')+'</div>';
+    if(foodTab==='dishes')
+      h=foodTitle+((state.dishes&&state.dishes.length)
+        ? '<div class="groupblock">'+bookTop('dishes',500).map(function(x){
+            return '<div class="dish"><span class="t">'+esc(x.name)+'</span>'
+              +'<span class="wish-meta">'+plural(x.n||0,['раз','раза','раз'])+'</span>'
+              +'<button class="x" title="Забыть блюдо" data-a="del-book" data-v="dishes" data-id="'+x.id+'">✕</button></div>';
+          }).join('')+'</div>'
+        : '<div class="empty">Блюда появятся здесь, когда вы начнёте записывать питание.</div>');
   }else if(v==='workouts'){
     var lastW=(state.workouts||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}).filter(function(w){return w.place;})[0];
     var lastPlace={place:lastW?lastW.place:'home',gym:lastW&&lastW.place==='gym'?(lastW.gym||''):''};
@@ -4183,6 +4186,7 @@ function onClick(e){
   }
   else if(a==='w-day'){diaryDay=b.dataset.v;route.view='workouts';renderNav();renderMain();}
   else if(a==='food-day'){diaryDay=b.dataset.v;route.view='food';renderNav();renderMain();}
+  else if(a==='food-tab'){foodTab=b.dataset.v;renderMain();}
   else if(a==='meal-open'){openMeal=id;renderMain();}
   else if(a==='meal-close'){openMeal=null;renderMain();}
   else if(a==='open-slot'){
