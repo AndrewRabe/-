@@ -1740,8 +1740,9 @@ function nv(view,label,count,icon){
 /* один перечень разделов: из него строится и боковое меню, и плитки главной */
 function navSections(){
   var act=state.items.filter(visible),objs=act.filter(notInbox);
-  var tasksN=0,plansN=0,doneN=0,payN=0;
-  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);doneN+=(it.tasks||[]).length-openCount(it.tasks);
+  var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0;
+  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);
+    (it.plans||[]).forEach(function(p){if(!p.done){if(p.kind==='improve')impN++;else buyN++;}});doneN+=(it.tasks||[]).length-openCount(it.tasks);
     (it.tasks||[]).forEach(function(t){if(!t.done&&isPay(t))payN++;});});
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
@@ -1756,7 +1757,8 @@ function navSections(){
     {title:'Задачи',items:[
       {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
-      {v:'plans',label:'Покупки и планы',n:plansN,icon:'🛒'},
+      {v:'buy',label:'Покупки',n:buyN,icon:'🛒'},
+      {v:'improve',label:'Планы',n:impN,icon:'🛠'},
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
     {title:'Сводки',items:[
@@ -2463,31 +2465,23 @@ function renderMain(){
       });
       h+='</div>';
     }else h+='<div class="empty">Пока пусто. Добавьте вручную или загрузите из календаря: ⚙ → «Добавить мероприятия из файла» (.ics).</div>';
-  }else if(v==='plans'){
-    h=title('🛒 Покупки и планы',null);
-    var buy=[],imp=[];
+  }else if(v==='buy'||v==='improve'){
+    var isBuy=v==='buy',pl=[];
     state.items.filter(visible).forEach(function(it){
-      (it.plans||[]).forEach(function(p){if(!p.done)(p.kind==='improve'?imp:buy).push({it:it,p:p});});
+      (it.plans||[]).forEach(function(p){if(!p.done&&(p.kind==='improve')!==isBuy)pl.push({it:it,p:p});});
     });
-    function block(name,arr){
-      if(!arr.length)return '';
-      return '<div class="groupblock"><h3>'+name+'</h3>'+arr.map(function(e){
+    h=title(isBuy?'🛒 Покупки':'🛠 Планы',pl.length);
+    h+=pl.length?'<div class="groupblock">'+pl.map(function(e){
         return '<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">'
           +'<span class="t">'+esc(e.p.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
           +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">✕</button></div>';
-      }).join('')+'</div>';
-    }
-    var bl=block('Докупить',buy)+block('Улучшить и сделать',imp);
-    h+=bl||'<div class="empty">Списки пусты — добавьте первую строку ниже.</div>';
+      }).join('')+'</div>'
+      :'<div class="empty">'+(isBuy?'Список покупок пуст — добавьте первую строку ниже.':'Планов пока нет — добавьте первый ниже.')+'</div>';
     if(state.items.filter(visible).filter(notInbox).length)
-      h+='<div class="groupblock"><h3>Новая строка</h3><div class="addrow">'
-        +'<input type="text" id="sum-plan" placeholder="Что докупить или улучшить…">'
+      h+='<div class="groupblock"><h3>'+(isBuy?'Новая покупка':'Новый план')+'</h3><div class="addrow">'
+        +'<input type="text" id="sum-plan" placeholder="'+(isBuy?'Что купить…':'Что улучшить или сделать…')+'">'
         +itemSelect('sum-plan-item','Объект')
-        +'<button class="btn ghost" data-a="sum-add-plan">Добавить</button></div>'
-        +'<div class="kindpick" style="margin-top:8px">'
-        +'<button class="'+(newPlanKind==='buy'?'on':'')+'" data-a="sum-plan-kind" data-v="buy">докупить</button>'
-        +'<button class="'+(newPlanKind==='improve'?'on':'')+'" data-a="sum-plan-kind" data-v="improve">улучшить</button>'
-        +'</div><p class="hint">Строка попадёт в карточку выбранного объекта — списки везде общие.</p></div>';
+        +'<button class="btn ghost" data-a="sum-add-plan">Добавить</button></div></div>';
   }
   m.innerHTML=h;
   if(refocus){var rf=document.getElementById(refocus);if(rf){rf.focus();refocus=null;}}
@@ -4852,7 +4846,7 @@ function onClick(e){
     var pit=find(spo&&spo.value);
     if(!pit)return;
     pit.plans=pit.plans||[];
-    pit.plans.push({id:uid(),text:ptext,done:false,kind:newPlanKind});
+    pit.plans.push({id:uid(),text:ptext,done:false,kind:route.view==='improve'?'improve':'buy'});
     refocus='sum-plan';touch();renderAll();
   }
   else if(a==='sum-plan-kind'){
