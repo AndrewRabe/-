@@ -377,6 +377,7 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .cal-legend{font-size:11.5px;color:var(--muted);display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .cal-legend .cal-dot{display:inline-block;vertical-align:middle;margin-right:5px}
 .due{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px;white-space:nowrap}
+button.plusbtn{font-size:18px;line-height:1;padding:6px 14px}
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
 .duebtn:hover{outline:1px solid var(--accent)}
@@ -1738,7 +1739,7 @@ function pruneInbox(){
 /* поиск и добавление объекта живут в разделах с объектами, а не в шапке */
 function objToolbar(withNew){
   return '<div class="addrow" style="margin:0 0 14px"><input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off" value="'+esc(query)+'">'
-    +(withNew?'<button class="btn" data-a="new">+ Объект</button>':'')+'</div>';
+    +(withNew?'<button class="btn plusbtn" data-a="new" title="Новый объект" aria-label="Новый объект">＋</button>':'')+'</div>';
 }
 function matches(it){
   if(!query)return true;
@@ -1926,8 +1927,7 @@ function renderMain(){
         +itemSelect('sum-task-item','Объект',true)
         +((state.taskGroups||[]).length?'<select id="sum-task-group" aria-label="Группа"><option value="">без группы</option>'
           +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
-        +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
-        +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
+        +'<button class="btn" data-a="sum-add-task">Добавить</button></div></div>';
     h+=plusRow('tasks')+(addOpen.tasks?taskForm:'');
     var tc={all:0,obj:0,none:0};(state.taskGroups||[]).forEach(function(g){tc[g.id]=0;});
     state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
@@ -1983,7 +1983,7 @@ function renderMain(){
     h=title('💳 Платежи',pays.length)
       +'<div class="stat-tiles"><div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
       +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>'
-      +'<div class="addrow" style="margin:0 0 12px"><button class="btn'+(addingPay?' ghost':'')+'" data-a="pay-open" title="Новый платёж" aria-label="Новый платёж" style="font-size:18px;line-height:1;padding:6px 14px">'+(addingPay?'✕':'＋')+'</button></div>'
+      +'<div class="addrow" style="margin:0 0 12px"><button class="btn plusbtn'+(addingPay?' ghost':'')+'" data-a="pay-open" title="Добавить" aria-label="Добавить">'+(addingPay?'✕':'＋')+'</button></div>'
       +(addingPay?'<div class="groupblock"><h3>Новый платёж</h3><div class="addrow" style="margin-top:0">'
       +'<input type="text" id="pay-text" placeholder="Что оплатить, например «Интернет»">'
       +'<input type="text" inputmode="decimal" id="pay-sum" placeholder="Сумма, ₽" style="flex:none;width:110px">'
@@ -2019,9 +2019,9 @@ function renderMain(){
   }else if(v==='notes'){
     var ns=(state.notes||[]).slice().reverse();          /* свежие сверху */
     h=title('📝 Заметки',ns.length)
-      +'<p class="hint" style="margin:0 0 12px">Место для мыслей на бегу: записали одной строкой, разобрали потом. Кнопка 📝 в шапке работает из любого раздела.</p>'
-      +'<div class="addrow" style="margin:0 0 14px"><input type="text" id="note-new" placeholder="Что записать…">'
-      +'<button class="btn" data-a="add-note">Записать</button></div>';
+      +plusRow('notes')
+      +(addOpen.notes?'<div class="groupblock"><h3>Новая заметка</h3><div class="addrow" style="margin-top:0"><input type="text" id="note-new" placeholder="Что записать…">'
+      +'<button class="btn" data-a="add-note">Записать</button></div></div>':'');
     if(!ns.length)h+='<div class="empty">Пока пусто. Запишите первую мысль — потом решите, куда её девать.</div>';
     ns.forEach(function(n){
       var d=noteDest[n.id]||{},to=d.to||'task';
@@ -2112,13 +2112,14 @@ function renderMain(){
     var dayW=workoutsOn(diaryDay),recent=(state.workouts||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}).slice(0,14);
     h=title('🏋 Тренировки',(state.workouts||[]).length)
       +dayNav()+bookList('exercises','exbook')+bookList('gyms','gymbook')
-      +'<div class="addrow" style="margin:0 0 14px"><select id="w-kind">'
+      +plusRow('workouts')
+      +(addOpen.workouts?'<div class="groupblock"><h3>Новая тренировка</h3><div class="addrow" style="margin-top:0"><select id="w-kind">'
       +WKINDS.map(function(k){return '<option>'+k+'</option>';}).join('')
       +'</select><input type="time" id="w-time" value="'+esc(diaryDay===todayStr()?nowHM():'')+'" title="Во сколько" style="width:112px">'
       +'<input type="text" id="w-dur" placeholder="Минут" style="width:92px">'
       +'<select id="w-place" data-f="w-place-new">'+Object.keys(PLACES).map(function(k){return '<option value="'+k+'"'+(k===lastPlace.place?' selected':'')+'>'+PLACES[k]+'</option>';}).join('')+'</select>'
       +'<input type="text" id="w-gym" data-book="gymbook" autocomplete="off" placeholder="В каком зале" value="'+esc(lastPlace.gym)+'" style="width:150px'+(lastPlace.place==='gym'?'':';display:none')+'">'
-      +'<button class="btn" data-a="add-workout">Записать тренировку</button></div>';
+      +'<button class="btn" data-a="add-workout">Записать</button></div></div>':'');
     if(!dayW.length)h+='<div class="empty">В этот день тренировок не записано.</div>';
     dayW.forEach(function(w){
       var exs=w.exs||[],opened=openWorkout===w.id;
@@ -2306,10 +2307,10 @@ function renderMain(){
       return 0;
     });
     h=title('⭐ Желания',ws.filter(function(w){return w.status!=='bought';}).length)
-      +'<p class="hint" style="margin:0 0 12px">Что хотите купить: следите за ценой и целью. Автоматический мониторинг Ozon делает программа-монитор на компьютере — кнопка ниже готовит для неё список.</p>'
-      +'<div class="addrow" style="margin:0 0 14px"><input type="text" id="wish-new" placeholder="Что хотите купить…">'
+      +plusRow('wish')
+      +(addOpen.wish?'<div class="groupblock"><h3>Новое желание</h3><div class="addrow" style="margin-top:0"><input type="text" id="wish-new" placeholder="Что хотите купить…">'
       +'<input type="text" id="wish-new-target" placeholder="Целевая цена" style="width:120px">'
-      +'<button class="btn" data-a="add-wish">Добавить</button></div>';
+      +'<button class="btn" data-a="add-wish">Добавить</button></div></div>':'');
     ws.forEach(function(w){
       var tgt=moneyNum(w.target),last=monPrice(w)||moneyNum(w.last);
       var hit=w.status!=='bought'&&tgt&&last&&last<=tgt;
@@ -2341,7 +2342,7 @@ function renderMain(){
     if(ozonN)h+='<div class="btnrow" style="margin-top:14px">'
       +(YD.ready()?'<button class="btn ghost" data-a="wish-refresh">Обновить цены монитора</button>':'')
       +'<button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
-      +'<p class="hint">Цены проверяет программа-монитор: в облаке по расписанию или на вашем компьютере. Файл со списком нужен, чтобы добавить товары в монитор, запущенный вручную.</p>';
+      +'';
   }else if(v==='selling'){
     var sl=state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}),slSum=0,slPosted=0;
     sl.forEach(function(i){
@@ -2428,12 +2429,12 @@ function renderMain(){
   }else if(v==='places'){
     var pls=placesAll();
     h=title('📦 Хранение',pls.length)
-      +'<p class="hint" style="margin:0 0 12px">Заведите места — комнаты, шкафы, коробки. Наклейте на коробку QR-код: телефон откроет её содержимое, даже не разбирая.</p>'
-      +'<div class="groupblock"><h3>Новое место</h3><div class="addrow">'
+      +plusRow('places')
+      +(addOpen.places?'<div class="groupblock"><h3>Новое место</h3><div class="addrow" style="margin-top:0">'
       +'<input type="text" id="pl-name" placeholder="Кладовка, коробка №3, антресоль…">'
       +'<select id="pl-parent" aria-label="Внутри чего"><option value="">Верхний уровень</option>'
       +pls.map(function(pl){return '<option value="'+pl.id+'">'+esc(placePath(pl.id))+'</option>';}).join('')
-      +'</select><button class="btn ghost" data-a="add-place">Добавить</button></div></div>';
+      +'</select><button class="btn" data-a="add-place">Добавить</button></div></div>':'');
     if(pls.length){
       h+='<div class="btnrow" style="margin:0 0 12px"><button class="btn ghost" data-a="print-labels">Печать этикеток с QR</button></div>';
       var noPlace=state.items.filter(function(it){return !it.placeId&&it.status!=='archive';});
@@ -2465,14 +2466,14 @@ function renderMain(){
   }else if(v==='bd'){
     var bds=(state.birthdays||[]).slice().sort(function(a,b){return bdWhen(a).days-bdWhen(b).days;});
     h=title('🎂 Дни рождения',bds.length)
-      +'<div class="groupblock"><h3>Новый день рождения</h3><div class="addrow">'
+      +plusRow('bd')
+      +(addOpen.bd?'<div class="groupblock"><h3>Новый день рождения</h3><div class="addrow" style="margin-top:0">'
       +'<input type="text" id="bd-name" placeholder="Имя">'
       +'<input type="date" id="bd-date" title="Дата рождения">'
-      +'<button class="btn ghost" data-a="add-bd">Добавить</button></div>'
-      +'<p class="hint">Год можно указать любой — если он настоящий, приложение посчитает, сколько исполнится.</p></div>';
+      +'<button class="btn" data-a="add-bd">Добавить</button></div></div>':'');
     if(bds.length){
       h+='<div class="groupblock"><h3>Ближайшие</h3>'
-        +'<p class="hint" style="margin:0 0 6px">У записей из календаря год рождения обычно не настоящий — впишите его в дату, и приложение начнёт считать возраст.</p>';
+        +'';
       bds.forEach(function(bd){
         var w=bdWhen(bd);
         h+='<div class="bd '+w.cls+'"><span class="ic">🎂</span>'
@@ -2494,7 +2495,7 @@ function renderMain(){
       +'<input type="text" id="sum-buy" placeholder="Что купить…">'
       +'<input type="date" id="sum-buy-due" title="Когда нужно (необязательно)">'
       +itemSelect('sum-buy-item','Объект',true)
-      +'<button class="btn ghost" data-a="sum-add-buy">Добавить</button></div></div>':'');
+      +'<button class="btn" data-a="sum-add-buy">Добавить</button></div></div>':'');
     h+=bl2.length?'<div class="groupblock">'+bl2.map(function(e){
         return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
       }).join('')+'</div>'
@@ -2511,7 +2512,7 @@ function renderMain(){
         ?'<div class="groupblock"><h3>Новый план</h3><div class="addrow">'
           +'<input type="text" id="sum-plan" placeholder="Что улучшить или сделать…">'
           +itemSelect('sum-plan-item','Объект')
-          +'<button class="btn ghost" data-a="sum-add-plan">Добавить</button></div></div>'
+          +'<button class="btn" data-a="sum-add-plan">Добавить</button></div></div>'
         :'<div class="empty">Планы привязываются к объекту — сначала заведите объект.</div>';
     h+=pl.length?'<div class="groupblock">'+pl.map(function(e){
         return '<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">'
@@ -2535,7 +2536,7 @@ function itemSelect(id,label,withInbox){
 /* кнопка «＋» над списком: открывает форму добавления, форма всегда сверху */
 function plusRow(view){
   var on=!!addOpen[view];
-  return '<div class="addrow" style="margin:0 0 12px"><button class="btn'+(on?' ghost':'')+'" data-a="add-toggle" data-v="'+view+'" title="Добавить" aria-label="Добавить" style="font-size:18px;line-height:1;padding:6px 14px">'+(on?'✕':'＋')+'</button></div>';
+  return '<div class="addrow" style="margin:0 0 12px"><button class="btn plusbtn'+(on?' ghost':'')+'" data-a="add-toggle" data-v="'+view+'" title="Добавить" aria-label="Добавить">'+(on?'✕':'＋')+'</button></div>';
 }
 function groupName(id){var n='';(state.taskGroups||[]).forEach(function(g){if(g.id===id)n=g.name;});return n;}
 function taskInTab(it,t,tab){
@@ -4492,7 +4493,7 @@ function onClick(e){
     markUndo();
     if(nw.gym)bookAdd('gyms',nw.gym);
     state.workouts=state.workouts||[];state.workouts.push(nw);
-    openWorkout=nw.id;
+    openWorkout=nw.id;addOpen.workouts=false;
     touch();renderAll();toast('Тренировка записана','Отменить');
   }
   else if(a==='del-workout'){
@@ -4646,7 +4647,7 @@ function onClick(e){
   else if(a==='del-group'){delGroup=id;renderMain();}
   else if(a==='add-toggle'){
     var av=b.dataset.v;addOpen[av]=!addOpen[av];
-    if(addOpen[av])refocus={tasks:'sum-task',buy:'sum-buy',improve:'sum-plan'}[av]||null;
+    if(addOpen[av])refocus={tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
     renderMain();
   }
   else if(a==='pay-open'){addingPay=!addingPay;if(addingPay)refocus='pay-text';renderMain();}
