@@ -2572,6 +2572,9 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
     +'<span class="t">'+esc(x.text)+'</span>'
     +(kind==='tasks'&&x.buy&&route.view!=='buy'?'<span class="rep" title="Покупка">🛒</span>':'')
+    +(kind==='tasks'&&x.buy&&!dueEdit?(x.owned&&find(x.owned)
+        ?'<button class="x" title="Открыть в имуществе" data-a="open" data-id="'+x.owned+'">📦✓</button>'
+        :'<button class="x" title="Добавить в имущество" data-a="buy-own" data-id="'+itemId+'" data-sub="'+x.id+'">📦</button>'):'')
     +(label?'<span class="wish-meta">'+esc(label)+'</span>':'')
     +(kind==='tasks'&&x.sum!=null&&x.sum!==''&&num(x.sum)>0?'<span class="rep" title="Сумма платежа">'+fmtMoney(num(x.sum))+'</span>':'');
   if(kind==='tasks'&&x.insId){
@@ -2964,6 +2967,22 @@ function openModal(){
     +'<button class="btn" data-a="create">Создать</button></div></div>';
   m.innerHTML=h;
   document.getElementById('ni-name').focus();
+}
+/* купленное можно сразу завести как имущество */
+function openBuyOwn(itemId,taskId){
+  var host=find(itemId),t=host&&(host.tasks||[]).filter(function(x){return x.id===taskId;})[0];
+  if(!t)return;
+  var m=document.getElementById('modal'),pv=paySum(t);
+  m.hidden=false;
+  var h='<div class="modal-box"><h3>Добавить в имущество?</h3>'
+    +'<label for="bo-name">Название</label><input id="bo-name" type="text" value="'+esc(String(t.text||'').replace(/\s+[—–-]\s+\d[\d\s\u00a0]*(?:₽|руб).*$/i,''))+'">'
+    +'<label for="bo-cat">Раздел</label><select id="bo-cat">';
+  Object.keys(CATS).forEach(function(c){h+='<option value="'+c+'"'+(c==='stuff'?' selected':'')+'>'+CATS[c].icon+' '+CATS[c].label+'</option>';});
+  h+='</select><label for="bo-price">Цена покупки, ₽ (необязательно)</label><input id="bo-price" type="text" inputmode="decimal" value="'+(pv?pv:'')+'">'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Не нужно</button>'
+    +'<button class="btn" data-a="buy-own-go" data-id="'+itemId+'" data-sub="'+taskId+'">В имущество</button></div></div>';
+  m.innerHTML=h;
+  document.getElementById('bo-name').focus();
 }
 function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
@@ -4723,9 +4742,10 @@ function onClick(e){
   }
   else if(a==='tgl'&&it){
     markUndo();
-    var moved='';
+    var moved='',askBuy=null;
     (it[b.dataset.kind]||[]).forEach(function(x){
       if(x.id!==b.dataset.sub)return;
+      if(b.dataset.kind==='tasks'&&x.buy&&!x.done&&!x.repeat&&!x.owned)askBuy={item:it.id,task:x.id};
       if(b.dataset.kind==='tasks'&&!x.done&&isPay(x))x.hist=(x.hist||[]).concat([todayStr()]);   /* журнал оплат */
       if(b.dataset.kind==='tasks'&&x.repeat&&!x.done){
         var base=x.due||todayStr();
@@ -4738,6 +4758,22 @@ function onClick(e){
     if(moved)toast('Сделано. Следующий раз — '+fmtDue(moved),'Отменить');
     else toast('Отметка изменена','Отменить');
     touch();renderNav();renderMain();if(route.item)renderDetail();
+    if(askBuy)setTimeout(function(){openBuyOwn(askBuy.item,askBuy.task);},200);
+  }
+  else if(a==='buy-own'){openBuyOwn(id,b.dataset.sub);}
+  else if(a==='buy-own-go'){
+    var bh=find(id),bt=bh&&(bh.tasks||[]).filter(function(x){return x.id===b.dataset.sub;})[0];
+    var bn=document.getElementById('bo-name'),bname=bn?bn.value.trim():'';
+    if(!bt)return;
+    if(!bname){if(bn)bn.focus();return;}
+    var bcat=document.getElementById('bo-cat'),bpr=document.getElementById('bo-price');
+    markUndo();
+    var nitem={id:uid(),name:bname,cat:bcat?bcat.value:'stuff',status:'active',price:'',notes:'',specs:[],instructions:[],tasks:[],questions:[],plans:[],photos:[]};
+    var bpv=bpr?num(bpr.value):0;if(bpv>0)nitem.buyPrice=String(bpv);
+    state.items.unshift(nitem);
+    bt.owned=nitem.id;
+    touch();closeModal();renderAll();
+    toast('Добавлено в имущество: '+bname,'Отменить');
   }
   else if(a==='del-sub'&&it){
     markUndo();
