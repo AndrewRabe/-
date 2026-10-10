@@ -377,6 +377,10 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .cal-legend{font-size:11.5px;color:var(--muted);display:flex;gap:14px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .cal-legend .cal-dot{display:inline-block;vertical-align:middle;margin-right:5px}
 .due{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px;white-space:nowrap}
+.duebtn{position:relative;cursor:pointer}
+.duebtn:hover{outline:1px solid var(--accent)}
+.duebtn.none{background:transparent;border:1px dashed var(--line);font-weight:500}
+.duepick{position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none;border:0;padding:0}
 .due.today{background:var(--sale-soft);color:var(--sale)}
 .due.over{background:transparent;color:var(--danger);border:1px solid var(--danger)}
 .duein{padding:3px 6px;font-size:12px;flex:none;width:auto;color:var(--muted)}
@@ -2513,7 +2517,11 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
   if(kind==='tasks'&&x.time&&!dueEdit)h+='<span class="ev-time">'+esc(x.time)+'</span>';
   if(kind==='tasks'&&x.repeat&&!dueEdit)h+='<span class="rep" title="Периодическая задача">🔁 '+REPEATS[x.repeat]+'</span>';
   if(kind==='tasks'&&x.due&&dueEdit)h+='<button class="x" title="В календарь телефона" data-a="task-ics" data-id="'+itemId+'" data-sub="'+x.id+'">📅</button>';
-  if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
+  /* дата — кнопка: по щелчку открывается выбор новой даты (в карточке объекта правка уже встроена) */
+  if(kind==='tasks'&&!dueEdit&&!x.done)
+    h+='<span class="due duebtn '+(x.due?dueClass(x.due):'none')+'" data-a="due-pick" title="Изменить срок">'+(x.due?fmtDue(x.due):'＋ срок')
+      +'<input type="date" class="duepick" tabindex="-1" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'"></span>';
+  else if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
   if(kind==='tasks'&&dueEdit){
     h+='<input type="date" class="duein" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'" title="Срок задачи">'
       +'<input type="time" class="duein" value="'+esc(x.time||'')+'" data-f="task-time" data-id="'+itemId+'" data-sub="'+x.id+'" title="Время напоминания" style="width:96px">'
@@ -4628,6 +4636,10 @@ function onClick(e){
       }
     }
     touch();renderAll();
+  }
+  else if(a==='due-pick'){
+    var dpi=b.querySelector('.duepick');
+    if(dpi){try{if(dpi.showPicker){dpi.showPicker();return;}}catch(x){}dpi.style.pointerEvents='auto';dpi.focus();dpi.click();}
   }
   else if(a==='tgl'&&it){
     markUndo();
