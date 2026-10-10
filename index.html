@@ -429,6 +429,7 @@ details.help li{margin-bottom:4px}
   nav#nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;overflow-x:auto;min-width:0}
   .navgroup{margin:0;display:flex;gap:6px;align-items:center;flex:none}
   .navgroup h4{display:none}
+  .navtop{position:sticky;left:0;z-index:2;background:var(--bg);padding-right:8px;box-shadow:8px 0 8px -6px var(--bg)}
   .navitem{white-space:nowrap;padding:6px 11px;background:var(--surface2);border-radius:99px}
   .navitem.on{background:var(--accent-soft)}
   header.top{flex-wrap:wrap;gap:8px 10px}
@@ -440,6 +441,7 @@ details.help li{margin-bottom:4px}
 
 <header class="top">
   <button class="iconbtn" data-a="go" data-v="home" title="Главная" aria-label="Главная">🏠</button>
+  <button class="iconbtn" data-a="go" data-v="cal" title="Календарь" aria-label="Календарь">📅</button>
   <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Личный <span class="leaf">кабинет</span></div>
   <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
   <button class="iconbtn" data-a="note-new" title="Быстрая заметка">📝</button>
@@ -1780,11 +1782,11 @@ function navSections(){
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
       {v:'buy',label:'Покупки',n:(buyN+(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length)||null,icon:'🛒'},
       {v:'improve',label:'Планы',n:impN,icon:'🛠'},
+      {v:'tolist',label:'Выложить на продажу',n:sellN2||null,icon:'📤'},
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
     {title:'Сводки',items:[
       {v:'notes',label:'Заметки',n:(state.notes||[]).length,icon:'📝'},
-      {v:'cal',label:'Календарь',n:att,icon:'📅'},
       {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
     ]},
@@ -1794,13 +1796,15 @@ function navSections(){
     ]},
     {title:'Продажа',items:[
       {v:'selling',label:'Сводка',n:saleN||null,icon:'📊'},
-      {v:'tolist',label:'Выложить',n:sellN2||null,icon:'📤'},
       {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'}
     ]}
   ];
 }
 function renderNav(){
-  var h='<div class="navgroup">'+nv('home','Главная',null,'🏠')+'</div>';
+  var tdy=todayStr(),attN=0;
+  state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=tdy)attN++;});});
+  attN+=eventsOn(tdy).length+bdsOn(tdy).length;
+  var h='<div class="navgroup navtop">'+nv('home','Главная',null,'🏠')+nv('cal','Календарь',attN||null,'📅')+'</div>';
   navSections().forEach(function(g){
     h+='<div class="navgroup"><h4>'+g.title+'</h4>'
       +g.items.map(function(x){return nv(x.v,x.label,x.n,x.icon);}).join('')
@@ -5601,7 +5605,7 @@ function restoreUi(){
   try{
     var u=JSON.parse(localStorage.getItem(UI_KEY)||'null');
     if(!u||typeof u.view!=='string')return;
-    var ok=u.view==='home'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
+    var ok=u.view==='home'||u.view==='cal'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
     if(ok)route.view=u.view;
     if(u.foodTab==='dishes'||u.foodTab==='diary')foodTab=u.foodTab;
     if(typeof u.taskTab==='string')taskTab=u.taskTab;
