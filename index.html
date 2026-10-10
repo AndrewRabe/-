@@ -1910,7 +1910,7 @@ function renderMain(){
         +'</div></div>';
     });
   }else if(v==='food'){
-    var day=mealsOn(diaryDay),top=bookTop('dishes',10);
+    var day=mealsOn(diaryDay);
     h=title('🍽 Питание',day.reduce(function(a,m){return a+(m.dishes||[]).length;},0))
       +dayNav()+bookList('dishes','dishbook');
     /* показываем только то, что было: любого приёма может не быть, перекусов — несколько.
@@ -1941,10 +1941,6 @@ function renderMain(){
         : '<p class="hint" style="margin:0 0 6px">Пока ничего не записано.</p>';
       h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+key+'" placeholder="Что было… (несколько — через «;»)" autocomplete="off">'
         +'<button class="btn ghost" data-a="add-dish" data-v="'+sl+'"'+idA+'>Добавить</button></div>';
-      if(top.length)
-        h+='<div class="quick"><span class="lbl">часто:</span>'
-          +top.map(function(x){return '<button data-a="quick-dish" data-v="'+sl+'"'+idA+' data-n="'+esc(x.name)+'">'+esc(x.name)+'</button>';}).join('')
-          +'</div>';
       if(m)h+='<div class="addrow" style="margin-top:8px"><input type="text" value="'+esc(m.note||'')+'" data-f="meal-note" data-v="'+sl+'"'+idA+' placeholder="Заметка к приёму пищи (необязательно)"></div>';
       h+='</div>';
     });
