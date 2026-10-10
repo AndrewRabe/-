@@ -1733,8 +1733,8 @@ function nv(view,label,count,icon){
 /* один перечень разделов: из него строится и боковое меню, и плитки главной */
 function navSections(){
   var act=state.items.filter(visible),objs=act.filter(notInbox);
-  var tasksN=0,plansN=0;
-  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);});
+  var tasksN=0,plansN=0,doneN=0;
+  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);doneN+=(it.tasks||[]).length-openCount(it.tasks);});
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
   att+=eventsOn(today).length+bdsOn(today).length;
@@ -1747,6 +1747,7 @@ function navSections(){
     {title:'Сводки',items:[
       {v:'notes',label:'Заметки',n:(state.notes||[]).length,icon:'📝'},
       {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
+      {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'},
       {v:'cal',label:'Календарь',n:att,icon:'📅'},
       {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
@@ -1879,25 +1880,22 @@ function renderMain(){
       return (isInbox(b)?1:0)-(isInbox(a)?1:0);       /* «Без объекта» наверх */
     });
     withTasks.forEach(function(it){
-      var list=(it.tasks||[]).slice();
+      var list=(it.tasks||[]).filter(function(t){return !t.done;});
       if(!list.length)return;any=true;
-      list.sort(function(a,b){
-        if(!!a.done!==!!b.done)return a.done?1:-1;
-        return (a.due||'~')<(b.due||'~')?-1:1;
-      });
-      var opened=openCount(it.tasks);
+      list.sort(function(a,b){return (a.due||'~')<(b.due||'~')?-1:1;});
+      var opened=list.length;
       var head=isInbox(it)?'📥 '+esc(it.name)
         :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
       var tail=delGroup===it.id
-        ?'<span class="wish-meta" style="margin-left:auto">Удалить все '+list.length+'?</span>'
+        ?'<span class="wish-meta" style="margin-left:auto">Удалить все открытые ('+list.length+')?</span>'
           +'<button class="x" title="Да, удалить весь список" data-a="del-group-yes" data-id="'+it.id+'">✕ да</button>'
           +'<button class="x" title="Оставить" data-a="del-group-no">отмена</button>'
-        :'<span class="wish-meta" style="margin-left:auto">'+(opened?opened+' открыто из '+list.length:'все '+list.length+' выполнены')+'</span>'
+        :'<span class="wish-meta" style="margin-left:auto">'+plural(opened,['задача','задачи','задач'])+'</span>'
           +'<button class="x" title="Удалить весь список задач" data-a="del-group" data-id="'+it.id+'">✕ все</button>';
       h+='<div class="groupblock"><h3>'+head+tail+'</h3>'
         +list.map(function(t){return rowHTML(it.id,'tasks',t,true,false,isInbox(it));}).join('')+'</div>';
     });
-    if(!any)h+='<div class="empty">Задач пока нет — добавьте первую ниже.</div>';
+    if(!any)h+='<div class="empty">Открытых задач нет — добавьте новую ниже.</div>';
     {
       h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
         +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
@@ -1910,6 +1908,21 @@ function renderMain(){
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
         +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
     }
+  }else if(v==='done'){
+    var doneAll=0;
+    var doneGroups=state.items.filter(visible).filter(function(it){return (it.tasks||[]).some(function(t){return t.done;});})
+      .sort(function(a,b){return (isInbox(b)?1:0)-(isInbox(a)?1:0);});
+    doneGroups.forEach(function(it){doneAll+=(it.tasks||[]).filter(function(t){return t.done;}).length;});
+    h=title('✔ Выполненные',doneAll);
+    doneGroups.forEach(function(it){
+      var dl=(it.tasks||[]).filter(function(t){return t.done;});
+      var dhead=isInbox(it)?'📥 '+esc(it.name)
+        :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
+      h+='<div class="groupblock"><h3>'+dhead+'<span class="wish-meta" style="margin-left:auto">'+dl.length+'</span>'
+        +'<button class="x" title="Удалить выполненные задачи этого списка" data-a="del-done" data-id="'+it.id+'">✕ очистить</button></h3>'
+        +dl.map(function(t){return rowHTML(it.id,'tasks',t,true,false,false);}).join('')+'</div>';
+    });
+    if(!doneGroups.length)h+='<div class="empty">Выполненных задач пока нет. Отметьте задачу галочкой — она переедет сюда.</div>';
   }else if(v==='notes'){
     var ns=(state.notes||[]).slice().reverse();          /* свежие сверху */
     h=title('📝 Заметки',ns.length)
@@ -4419,13 +4432,22 @@ function onClick(e){
     toast('Ушло в '+where,'Отменить');
   }
   else if(a==='del-group'){delGroup=id;renderMain();}
+  else if(a==='del-done'){
+    var dIt=find(id);
+    if(dIt){
+      markUndo();
+      var dn=(dIt.tasks||[]).filter(function(t){return t.done;}).length;
+      dIt.tasks=(dIt.tasks||[]).filter(function(t){return !t.done;});
+      touch();renderAll();toast('Убрано выполненных: '+dn,'Вернуть');
+    }
+  }
   else if(a==='del-group-no'){delGroup=null;renderMain();}
   else if(a==='del-group-yes'){
     var gIt=find(id);
     if(gIt){
       markUndo();
-      var wasN=(gIt.tasks||[]).length;
-      gIt.tasks=[];
+      var wasN=(gIt.tasks||[]).filter(function(t){return !t.done;}).length;
+      gIt.tasks=(gIt.tasks||[]).filter(function(t){return t.done;});
       delGroup=null;touch();renderAll();
       toast('Удалено задач: '+wasN,'Вернуть');
     }
