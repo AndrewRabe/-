@@ -1439,7 +1439,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false;
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false, addOpen={};
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1916,6 +1916,19 @@ function renderMain(){
     state.items.filter(visible).forEach(function(it){allOpen+=openCount(it.tasks);});
     h=title('☑ Все задачи',allOpen);var any=false;
     if(taskTab!=='all'&&taskTab!=='obj'&&taskTab!=='none'&&!groupName(taskTab))taskTab='all';
+    var taskForm='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
+        +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
+        +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
+        +'<input type="time" id="sum-task-time" title="Время (необязательно)" style="width:96px">'
+        +'<select id="sum-task-repeat" title="Повтор">'
+        +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
+        +'</select>'
+        +itemSelect('sum-task-item','Объект',true)
+        +((state.taskGroups||[]).length?'<select id="sum-task-group" aria-label="Группа"><option value="">без группы</option>'
+          +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
+        +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
+        +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
+    h+=plusRow('tasks')+(addOpen.tasks?taskForm:'');
     var tc={all:0,obj:0,none:0};(state.taskGroups||[]).forEach(function(g){tc[g.id]=0;});
     state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
       if(t.done)return;
@@ -1951,21 +1964,7 @@ function renderMain(){
       h+='<div class="groupblock"><h3>'+head+tail+'</h3>'
         +list.map(function(t){return rowHTML(it.id,'tasks',t,true,false,isInbox(it),true);}).join('')+'</div>';
     });
-    if(!any)h+='<div class="empty">'+(taskTab==='all'?'Открытых задач нет — добавьте новую ниже.':'В этой группе открытых задач нет.')+'</div>';
-    {
-      h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
-        +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
-        +'<input type="date" id="sum-task-due" title="Срок (необязательно)">'
-        +'<input type="time" id="sum-task-time" title="Время (необязательно)" style="width:96px">'
-        +'<select id="sum-task-repeat" title="Повтор">'
-        +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
-        +'</select>'
-        +itemSelect('sum-task-item','Объект',true)
-        +((state.taskGroups||[]).length?'<select id="sum-task-group" aria-label="Группа"><option value="">без группы</option>'
-          +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
-        +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
-        +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
-    }
+    if(!any)h+='<div class="empty">'+(taskTab==='all'?'Открытых задач нет — нажмите «＋» и добавьте новую.':'В этой группе открытых задач нет.')+'</div>';
   }else if(v==='pay'){
     var td=todayStr(),pays=[],paidLog=[];
     state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
@@ -2490,33 +2489,36 @@ function renderMain(){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)bl2.push({it:it,t:t});});
     });
     bl2.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
-    h=title('🛒 Покупки',bl2.length);
-    h+=bl2.length?'<div class="groupblock">'+bl2.map(function(e){
-        return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
-      }).join('')+'</div>'
-      :'<div class="empty">Список покупок пуст — добавьте первую строку ниже.</div>';
-    h+='<div class="groupblock"><h3>Новая покупка</h3><div class="addrow">'
+    h=title('🛒 Покупки',bl2.length)+plusRow('buy')
+      +(addOpen.buy?'<div class="groupblock"><h3>Новая покупка</h3><div class="addrow">'
       +'<input type="text" id="sum-buy" placeholder="Что купить…">'
       +'<input type="date" id="sum-buy-due" title="Когда нужно (необязательно)">'
       +itemSelect('sum-buy-item','Объект',true)
-      +'<button class="btn ghost" data-a="sum-add-buy">Добавить</button></div></div>';
+      +'<button class="btn ghost" data-a="sum-add-buy">Добавить</button></div></div>':'');
+    h+=bl2.length?'<div class="groupblock">'+bl2.map(function(e){
+        return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
+      }).join('')+'</div>'
+      :'<div class="empty">Список покупок пуст — нажмите «＋» и добавьте первую.</div>';
+
   }else if(v==='improve'){
     var pl=[];
     state.items.filter(visible).forEach(function(it){
       (it.plans||[]).forEach(function(p){if(!p.done&&p.kind==='improve')pl.push({it:it,p:p});});
     });
-    h=title('🛠 Планы',pl.length);
+    h=title('🛠 Планы',pl.length)+plusRow('improve');
+    if(addOpen.improve)
+      h+=state.items.filter(visible).filter(notInbox).length
+        ?'<div class="groupblock"><h3>Новый план</h3><div class="addrow">'
+          +'<input type="text" id="sum-plan" placeholder="Что улучшить или сделать…">'
+          +itemSelect('sum-plan-item','Объект')
+          +'<button class="btn ghost" data-a="sum-add-plan">Добавить</button></div></div>'
+        :'<div class="empty">Планы привязываются к объекту — сначала заведите объект.</div>';
     h+=pl.length?'<div class="groupblock">'+pl.map(function(e){
         return '<div class="row"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">'
           +'<span class="t">'+esc(e.p.text)+'</span><span class="src" data-a="open" data-id="'+e.it.id+'">'+esc(e.it.name)+'</span>'
           +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="plans" data-sub="'+e.p.id+'">✕</button></div>';
       }).join('')+'</div>'
-      :'<div class="empty">Планов пока нет — добавьте первый ниже.</div>';
-    if(state.items.filter(visible).filter(notInbox).length)
-      h+='<div class="groupblock"><h3>Новый план</h3><div class="addrow">'
-        +'<input type="text" id="sum-plan" placeholder="Что улучшить или сделать…">'
-        +itemSelect('sum-plan-item','Объект')
-        +'<button class="btn ghost" data-a="sum-add-plan">Добавить</button></div></div>';
+      :'<div class="empty">Планов пока нет — нажмите «＋» и добавьте первый.</div>';
   }
   m.innerHTML=h;
   if(refocus){var rf=document.getElementById(refocus);if(rf){rf.focus();refocus=null;}}
@@ -2530,6 +2532,11 @@ function itemSelect(id,label,withInbox){
     +'</select>';
 }
 /* группы задач: независимы от объектов, у задачи необязательное поле g */
+/* кнопка «＋» над списком: открывает форму добавления, форма всегда сверху */
+function plusRow(view){
+  var on=!!addOpen[view];
+  return '<div class="addrow" style="margin:0 0 12px"><button class="btn'+(on?' ghost':'')+'" data-a="add-toggle" data-v="'+view+'" title="Добавить" aria-label="Добавить" style="font-size:18px;line-height:1;padding:6px 14px">'+(on?'✕':'＋')+'</button></div>';
+}
 function groupName(id){var n='';(state.taskGroups||[]).forEach(function(g){if(g.id===id)n=g.name;});return n;}
 function taskInTab(it,t,tab){
   if(tab==='all')return true;
@@ -4637,6 +4644,11 @@ function onClick(e){
     toast('Ушло в '+where,'Отменить');
   }
   else if(a==='del-group'){delGroup=id;renderMain();}
+  else if(a==='add-toggle'){
+    var av=b.dataset.v;addOpen[av]=!addOpen[av];
+    if(addOpen[av])refocus={tasks:'sum-task',buy:'sum-buy',improve:'sum-plan'}[av]||null;
+    renderMain();
+  }
   else if(a==='pay-open'){addingPay=!addingPay;if(addingPay)refocus='pay-text';renderMain();}
   else if(a==='pay-add'){
     var pti=document.getElementById('pay-text'),ptx=pti?pti.value.trim():'';
