@@ -1438,7 +1438,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false;
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false;
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1963,14 +1963,15 @@ function renderMain(){
     h=title('💳 Платежи',pays.length)
       +'<div class="stat-tiles"><div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
       +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>'
-      +'<div class="groupblock"><h3>Новый платёж</h3><div class="addrow" style="margin-top:0">'
+      +'<div class="addrow" style="margin:0 0 12px"><button class="btn'+(addingPay?' ghost':'')+'" data-a="pay-open" title="Новый платёж" aria-label="Новый платёж" style="font-size:18px;line-height:1;padding:6px 14px">'+(addingPay?'✕':'＋')+'</button></div>'
+      +(addingPay?'<div class="groupblock"><h3>Новый платёж</h3><div class="addrow" style="margin-top:0">'
       +'<input type="text" id="pay-text" placeholder="Что оплатить, например «Интернет»">'
       +'<input type="text" inputmode="decimal" id="pay-sum" placeholder="Сумма, ₽" style="flex:none;width:110px">'
       +'<input type="date" id="pay-due" title="Срок оплаты">'
       +'<select id="pay-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
       +itemSelect('pay-item','Объект',true)
-      +'<button class="btn" data-a="pay-add">Добавить</button></div></div>';
-    if(!pays.length)h+='<div class="empty">Платежей пока нет. Добавьте первый выше: аренда, интернет, страховка, кредит.</div>';
+      +'<button class="btn" data-a="pay-add">Добавить</button></div></div>':'');
+    if(!pays.length)h+='<div class="empty">Платежей пока нет. Нажмите «＋» и добавьте первый: аренда, интернет, страховка, кредит.</div>';
     else h+='<div class="groupblock">'+pays.map(function(x){
       return rowHTML(x.it.id,'tasks',x.t,true,true,false,false,isInbox(x.it)?'':x.it.name);
     }).join('')+'</div>';
@@ -4574,6 +4575,7 @@ function onClick(e){
     toast('Ушло в '+where,'Отменить');
   }
   else if(a==='del-group'){delGroup=id;renderMain();}
+  else if(a==='pay-open'){addingPay=!addingPay;if(addingPay)refocus='pay-text';renderMain();}
   else if(a==='pay-add'){
     var pti=document.getElementById('pay-text'),ptx=pti?pti.value.trim():'';
     if(!ptx){if(pti)pti.focus();return;}
@@ -4586,7 +4588,7 @@ function onClick(e){
     if(prp&&prp.value){pent.repeat=prp.value;if(!pent.due)pent.due=todayStr();}
     markUndo();
     pit2.tasks=pit2.tasks||[];pit2.tasks.push(pent);
-    refocus='pay-text';touch();renderAll();
+    addingPay=false;touch();renderAll();
   }
   else if(a==='task-tab'){taskTab=b.dataset.v;addingGroup=false;renderMain();}
   else if(a==='grp-add-open'){addingGroup=!addingGroup;if(addingGroup)refocus='grp-new';renderMain();}
