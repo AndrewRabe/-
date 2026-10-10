@@ -443,6 +443,7 @@ details.help li{margin-bottom:4px}
   <button class="iconbtn" data-a="go" data-v="home" title="Главная" aria-label="Главная">🏠</button>
   <button class="iconbtn" data-a="go" data-v="cal" title="Календарь" aria-label="Календарь">📅</button>
   <button class="iconbtn" data-a="go" data-v="notes" title="Заметки" aria-label="Заметки">📝</button>
+  <button class="iconbtn" data-a="go" data-v="diaries" title="Дневники" aria-label="Дневники">📔</button>
   <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Личный <span class="leaf">кабинет</span></div>
   <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
   <button class="iconbtn" data-a="note-new" title="Быстрая заметка" aria-label="Быстрая заметка">✏️</button>
@@ -1800,7 +1801,7 @@ function renderNav(){
   var tdy=todayStr(),attN=0;
   state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=tdy)attN++;});});
   attN+=eventsOn(tdy).length+bdsOn(tdy).length;
-  var h='<div class="navgroup navtop">'+nv('home','Главная',null,'🏠')+nv('cal','Календарь',attN||null,'📅')+nv('notes','Заметки',(state.notes||[]).length||null,'📝')+'</div>';
+  var h='<div class="navgroup navtop">'+nv('home','Главная',null,'🏠')+nv('cal','Календарь',attN||null,'📅')+nv('notes','Заметки',(state.notes||[]).length||null,'📝')+nv('diaries','Дневники',null,'📔')+'</div>';
   navSections().forEach(function(g){
     h+='<div class="navgroup"><h4>'+g.title+'</h4>'
       +g.items.map(function(x){return nv(x.v,x.label,x.n,x.icon);}).join('')
@@ -2000,6 +2001,15 @@ function renderMain(){
             +(x.n?'<span class="n mono">'+x.n+'</span>':'')+'</button>';
         }).join('')
         +'</div></div>';
+    });
+  }else if(v==='diaries'){
+    h=title('📔 Дневники',null);
+    navSections().filter(function(g){return g.title==='Дневники';}).forEach(function(g){
+      h+='<div class="tiles">'+g.items.map(function(x){
+        return '<button class="tile" data-a="go" data-v="'+x.v+'">'
+          +'<span class="ic">'+x.icon+'</span><span class="lb">'+esc(x.label)+'</span>'
+          +(x.n?'<span class="n mono">'+x.n+'</span>':'')+'</button>';
+      }).join('')+'</div>';
     });
   }else if(v==='all'||v.indexOf('cat:')===0){
     var cat=v==='all'?null:v.slice(4);
@@ -5674,7 +5684,7 @@ function restoreUi(){
   try{
     var u=JSON.parse(localStorage.getItem(UI_KEY)||'null');
     if(!u||typeof u.view!=='string')return;
-    var ok=u.view==='home'||u.view==='cal'||u.view==='notes'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
+    var ok=u.view==='home'||u.view==='cal'||u.view==='notes'||u.view==='diaries'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
     if(ok)route.view=u.view;
     if(u.foodTab==='dishes'||u.foodTab==='diary')foodTab=u.foodTab;
     if(typeof u.taskTab==='string')taskTab=u.taskTab;
