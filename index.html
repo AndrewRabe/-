@@ -1734,8 +1734,9 @@ function nv(view,label,count,icon){
 /* один перечень разделов: из него строится и боковое меню, и плитки главной */
 function navSections(){
   var act=state.items.filter(visible),objs=act.filter(notInbox);
-  var tasksN=0,plansN=0,doneN=0;
-  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);doneN+=(it.tasks||[]).length-openCount(it.tasks);});
+  var tasksN=0,plansN=0,doneN=0,payN=0;
+  act.forEach(function(it){tasksN+=openCount(it.tasks);plansN+=openCount(it.plans);doneN+=(it.tasks||[]).length-openCount(it.tasks);
+    (it.tasks||[]).forEach(function(t){if(!t.done&&isPay(t))payN++;});});
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
   att+=eventsOn(today).length+bdsOn(today).length;
@@ -1747,6 +1748,7 @@ function navSections(){
     {title:'Разделы',items:cats},
     {title:'Задачи',items:[
       {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
+      {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
     {title:'Сводки',items:[
@@ -1929,6 +1931,43 @@ function renderMain(){
           +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
         +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
+    }
+  }else if(v==='pay'){
+    var td=todayStr(),pays=[],paidLog=[];
+    state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
+      if(!isPay(t))return;
+      if(!t.done)pays.push({it:it,t:t,sum:paySum(t)});
+      (t.hist||[]).forEach(function(d){paidLog.push({d:d,text:t.text,sum:paySum(t)});});
+    });});
+    pays.sort(function(a,b){return (a.t.due||'~')<(b.t.due||'~')?-1:(a.t.due||'~')>(b.t.due||'~')?1:0;});
+    var dNow=new Date(),monthEnd=dNow.getFullYear()+'-'+pad2(dNow.getMonth()+1)+'-'+pad2(new Date(dNow.getFullYear(),dNow.getMonth()+1,0).getDate());
+    var in30=shiftDay(td,30),sOver=0,sMonth=0,s30=0;
+    pays.forEach(function(x){
+      var d=x.t.due;if(!d)return;
+      if(d<td)sOver+=x.sum;
+      if(d>=td&&d<=monthEnd)sMonth+=x.sum;
+      if(d>=td&&d<=in30)s30+=x.sum;
+    });
+    h=title('💳 Платежи',pays.length)
+      +'<div class="stat-tiles"><div><b>'+fmtMoney(sOver)+'</b><span>просрочено</span></div>'
+      +'<div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
+      +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>'
+      +'<div class="groupblock"><h3>Новый платёж</h3><div class="addrow" style="margin-top:0">'
+      +'<input type="text" id="pay-text" placeholder="Что оплатить, например «Интернет»">'
+      +'<input type="text" inputmode="decimal" id="pay-sum" placeholder="Сумма, ₽" style="flex:none;width:110px">'
+      +'<input type="date" id="pay-due" title="Срок оплаты">'
+      +'<select id="pay-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
+      +itemSelect('pay-item','Объект',true)
+      +'<button class="btn" data-a="pay-add">Добавить</button></div></div>';
+    if(!pays.length)h+='<div class="empty">Платежей пока нет. Добавьте первый выше: аренда, интернет, страховка, кредит.</div>';
+    else h+='<div class="groupblock">'+pays.map(function(x){
+      return rowHTML(x.it.id,'tasks',x.t,true,true,false,false,isInbox(x.it)?'':x.it.name);
+    }).join('')+'</div>';
+    if(paidLog.length){
+      paidLog.sort(function(a,b){return a.d<b.d?1:a.d>b.d?-1:0;});
+      h+='<div class="groupblock"><h3>Недавно оплачено</h3>'+paidLog.slice(0,10).map(function(x){
+        return '<div class="dish"><span class="t">'+esc(x.text)+'</span><span class="wish-meta">'+fmtDue(x.d)+'</span></div>';
+      }).join('')+'</div>';
     }
   }else if(v==='done'){
     var doneAll=0;
@@ -2452,11 +2491,21 @@ function insTitle(it,insId){
   (it.instructions||[]).forEach(function(ins){if(ins.id===insId)found=ins.title||'Инструкция';});
   return found;
 }
-function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel){
+/* платежи — задачи с суммой: заведённые в разделе «Платежи» или с суммой в тексте («… — 10 000 ₽») */
+function paySum(t){
+  if(t.sum!=null&&t.sum!=='')return num(t.sum);
+  var m=/(\d[\d\s\u00a0]*(?:[.,]\d+)?)\s*(?:₽|руб)/i.exec(t.text||'');
+  return m?num(m[1].replace(/[\s\u00a0]/g,'')):0;
+}
+function isPay(t){return !!t.pay||paySum(t)>0;}
+function fmtMoney(n){return Math.round(n).toLocaleString('ru-RU')+' ₽';}
+function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
   var h='<div class="row'+(x.done?' done':'')+'">'
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
-    +'<span class="t">'+esc(x.text)+'</span>';
+    +'<span class="t">'+esc(x.text)+'</span>'
+    +(label?'<span class="wish-meta">'+esc(label)+'</span>':'')
+    +(kind==='tasks'&&x.sum!=null&&x.sum!==''&&num(x.sum)>0?'<span class="rep" title="Сумма платежа">'+fmtMoney(num(x.sum))+'</span>':'');
   if(kind==='tasks'&&x.insId){
     var itX=find(itemId),nmX=itX?insTitle(itX,x.insId):'';
     if(nmX)h+='<span class="rep" title="Из инструкции">📘 '+esc(nmX)+'</span>';
@@ -3491,6 +3540,9 @@ function mergeState(data){
           if(x.time)e.time=x.time;
           if(x.repeat)e.repeat=x.repeat;
           if(x.kind)e.kind=x.kind;
+          if(x.pay)e.pay=true;
+          if(x.sum!=null&&x.sum!=='')e.sum=x.sum;
+          if(x.hist)e.hist=x.hist.slice();
           if(x.g){
             var gsrc=(data.taskGroups||[]).filter(function(g){return g.id===x.g;})[0];
             if(gsrc&&gsrc.name){
@@ -4479,6 +4531,20 @@ function onClick(e){
     toast('Ушло в '+where,'Отменить');
   }
   else if(a==='del-group'){delGroup=id;renderMain();}
+  else if(a==='pay-add'){
+    var pti=document.getElementById('pay-text'),ptx=pti?pti.value.trim():'';
+    if(!ptx){if(pti)pti.focus();return;}
+    var psm=document.getElementById('pay-sum'),pdu=document.getElementById('pay-due'),prp=document.getElementById('pay-repeat'),pio=document.getElementById('pay-item');
+    var pit2=(pio&&pio.value===INBOX)?inboxItem():find(pio&&pio.value);
+    if(!pit2)pit2=inboxItem();
+    var pent={id:uid(),text:ptx,done:false,pay:true};
+    var pv=psm?num(psm.value):0;if(pv>0)pent.sum=pv;
+    if(pdu&&pdu.value)pent.due=pdu.value;
+    if(prp&&prp.value){pent.repeat=prp.value;if(!pent.due)pent.due=todayStr();}
+    markUndo();
+    pit2.tasks=pit2.tasks||[];pit2.tasks.push(pent);
+    refocus='pay-text';touch();renderAll();
+  }
   else if(a==='task-tab'){taskTab=b.dataset.v;addingGroup=false;renderMain();}
   else if(a==='grp-add-open'){addingGroup=!addingGroup;if(addingGroup)refocus='grp-new';renderMain();}
   else if(a==='grp-add'){
@@ -4568,6 +4634,7 @@ function onClick(e){
     var moved='';
     (it[b.dataset.kind]||[]).forEach(function(x){
       if(x.id!==b.dataset.sub)return;
+      if(b.dataset.kind==='tasks'&&!x.done&&isPay(x))x.hist=(x.hist||[]).concat([todayStr()]);   /* журнал оплат */
       if(b.dataset.kind==='tasks'&&x.repeat&&!x.done){
         var base=x.due||todayStr();
         x.due=nextFuture(base,x.repeat);
