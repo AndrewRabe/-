@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#33684E">
-<title>Домашний реестр</title>
+<title>Личный кабинет</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗂️</text></svg>">
@@ -430,7 +430,7 @@ details.help li{margin-bottom:4px}
 <body>
 
 <header class="top">
-  <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Домашний <span class="leaf">реестр</span></div>
+  <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Личный <span class="leaf">кабинет</span></div>
   <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
   <button class="iconbtn" data-a="note-new" title="Быстрая заметка">📝</button>
   <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
@@ -3620,8 +3620,8 @@ function icsAlarm(){
 }
 function buildIcs(opts){
   opts=opts||{tasks:true,events:true,bd:true};
-  var now=new Date(),L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Домашний реестр//RU','CALSCALE:GREGORIAN','METHOD:PUBLISH',
-                        'X-WR-CALNAME:Домашний реестр','X-WR-TIMEZONE:'+(Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow')];
+  var now=new Date(),L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Личный кабинет//RU','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+                        'X-WR-CALNAME:Личный кабинет','X-WR-TIMEZONE:'+(Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow')];
   var count=0;
   function ev(uid,summary,date,time,extra,alarm){
     L.push('BEGIN:VEVENT','UID:'+uid+'@home-registry','DTSTAMP:'+icsStamp(now));
@@ -3809,7 +3809,7 @@ function checkReminders(){
   if(d.events.length)lines.push('Сегодня: '+d.events.slice(0,3).join('; '));
   if(d.bds.length)lines.push('День рождения: '+d.bds.join(', '));
   try{
-    new Notification('Домашний реестр — '+plural(d.total,['дело','дела','дел'])+' на сегодня',{body:lines.join('\n'),tag:'home-registry-daily'});
+    new Notification('Личный кабинет — '+plural(d.total,['дело','дела','дел'])+' на сегодня',{body:lines.join('\n'),tag:'home-registry-daily'});
     localStorage.setItem(NOTIF_KEY,today);
   }catch(e){}
 }
@@ -4078,7 +4078,7 @@ function buildReadme(items,fullPhotos){
   L.push('2. Файл «Объявления.html» открывается в браузере: все вещи сразу,');
   L.push('   с кнопками «копировать» у каждого заголовка и описания.');
   L.push('3. Создаёте объявление на площадке, вставляете текст, прикладываете фото.');
-  L.push('4. Вернитесь в «Домашний реестр» и отметьте, что вещь выложена.','');
+  L.push('4. Вернитесь в «Личный кабинет» и отметьте, что вещь выложена.','');
   if(!fullPhotos){
     L.push('ВНИМАНИЕ ПРО ФОТО');
     L.push('В архив попали уменьшенные копии (превью) — полноразмерные снимки');

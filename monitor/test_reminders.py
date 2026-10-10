@@ -54,7 +54,7 @@ check("завтрашняя задача видна", any("Завтрашнее"
 check("завтрашнее мероприятие", any("Только завтра" in x for x in nxt["events"]))
 
 txt=R.build_text(state,today)
-check("текст собран", txt and "Домашний реестр" in txt)
+check("текст собран", txt and "Личный кабинет" in txt)
 check("есть блок просрочено", "Просрочено" in txt)
 check("есть блок завтра", "Завтра" in txt)
 check("даты в человеческом виде", "01.09" in txt)
