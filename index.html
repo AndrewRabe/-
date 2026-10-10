@@ -1617,7 +1617,7 @@ function mealsBrief(ds){
   mealsOn(ds).forEach(function(m){
     var d=m.dishes||[];
     if(!d.length)return;
-    out.push({time:m.time||'',slot:m.slot,
+    out.push({time:m.time||'',end:m.end||'',slot:m.slot,
       text:'🍽 '+d.slice(0,2).join(', ')+(d.length>2?' +'+(d.length-2):'')});
   });
   var order=Object.keys(SLOTS);
@@ -1929,7 +1929,9 @@ function renderMain(){
       var sl=bk.sl,m=bk.m,key=m?m.id:sl,idA=m?' data-id="'+m.id+'"':'';
       var ds2=(m&&m.dishes)||[];
       h+='<div class="groupblock slot"><h4>'+SLOTS[sl]+(ds2.length?' — '+ds2.length:'')
-        +'<input type="time" class="duein" id="mtime-'+key+'" value="'+esc(m?(m.time||''):defaultTime(sl))+'" data-f="meal-time" data-v="'+sl+'"'+idA+' title="Во сколько" style="margin-left:8px">'
+        +'<input type="time" class="duein" id="mtime-'+key+'" value="'+esc(m?(m.time||''):defaultTime(sl))+'" data-f="meal-time" data-v="'+sl+'"'+idA+' title="Начало" style="margin-left:8px">'
+        +'<span class="wish-meta" style="margin:0 4px">–</span>'
+        +'<input type="time" class="duein" id="mend-'+key+'" value="'+esc(m?(m.end||''):'')+'" data-f="meal-end" data-v="'+sl+'"'+idA+' title="Окончание (необязательно)">'
         +'</h4>';
       h+=ds2.length
         ? ds2.map(function(name,i){
@@ -2130,7 +2132,7 @@ function renderMain(){
     }).forEach(function(m){
       var sl=m.slot;
       if(!SLOTS[sl]||!(m.dishes||[]).length)return;
-      h+='<div class="row"><span class="ev-time">🍽'+(m.time?' '+esc(m.time):'')+'</span>'
+      h+='<div class="row"><span class="ev-time">🍽'+(m.time?' '+esc(m.time)+(m.end?'–'+esc(m.end):''):'')+'</span>'
         +'<span class="t" data-a="food-day" data-v="'+calSel+'" style="cursor:pointer">'
         +SLOTS[sl]+' — '+esc(m.dishes.join(', '))+'</span>'
         +'<span class="src" data-a="food-day" data-v="'+calSel+'">дневник</span></div>';
@@ -3467,7 +3469,7 @@ function mergeState(data){
       if(!m||!m.date||!SLOTS[m.slot])return;
       var cur=haveM[mealKey(m)];
       if(!cur){
-        cur={id:uid(),date:m.date,slot:m.slot,time:m.time||'',dishes:[],note:m.note||''};
+        cur={id:uid(),date:m.date,slot:m.slot,time:m.time||'',end:m.end||'',dishes:[],note:m.note||''};
         state.meals=state.meals||[];state.meals.push(cur);haveM[mealKey(m)]=cur;
       }
       (m.dishes||[]).forEach(function(d){
@@ -4189,7 +4191,7 @@ function onClick(e){
     markUndo();
     state.meals=state.meals||[];
     var mm=findMeal(slot,b.dataset.id);
-    if(!mm){var tin=document.getElementById('mtime-'+slot);mm={id:uid(),date:diaryDay,slot:slot,time:(tin&&tin.value)||defaultTime(slot),dishes:[],note:''};state.meals.push(mm);delete openSlots[slot];}
+    if(!mm){var tin=document.getElementById('mtime-'+slot);mm={id:uid(),date:diaryDay,slot:slot,time:(tin&&tin.value)||defaultTime(slot),end:(document.getElementById('mend-'+slot)||{}).value||'',dishes:[],note:''};state.meals.push(mm);delete openSlots[slot];}
     mm.dishes=mm.dishes||[];
     names.forEach(function(n1){mm.dishes.push(bookAdd('dishes',n1));});
     refocus=a==='add-dish'?('dish-'+(mm.id)):null;
@@ -4910,6 +4912,11 @@ function onChange(e){
     var lbl=document.querySelector('[data-plan-room="'+t.dataset.sub+'"] .nm');
     if(lbl)lbl.textContent=t.value||'Комната';
     touch();return;
+  }
+  if(f==='meal-end'){
+    var me=findMeal(t.dataset.v,t.dataset.id);
+    if(me){me.end=t.value;touch();renderMain();}
+    return;
   }
   if(f==='meal-time'){
     var mt=findMeal(t.dataset.v,t.dataset.id);
