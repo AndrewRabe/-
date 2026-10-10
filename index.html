@@ -943,6 +943,7 @@ function adoptRemote(remote){
   if(!state.dishes)state.dishes=[];
   if(!state.exercises)state.exercises=[];
   if(!state.gyms)state.gyms=[];
+  if(!state.taskGroups)state.taskGroups=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   writeLocal();renderAll();
 }
@@ -1431,7 +1432,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary';
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false;
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1876,11 +1877,28 @@ function renderMain(){
     var allOpen=0;
     state.items.filter(visible).forEach(function(it){allOpen+=openCount(it.tasks);});
     h=title('☑ Все задачи',allOpen);var any=false;
+    if(taskTab!=='all'&&taskTab!=='obj'&&taskTab!=='none'&&!groupName(taskTab))taskTab='all';
+    var tc={all:0,obj:0,none:0};(state.taskGroups||[]).forEach(function(g){tc[g.id]=0;});
+    state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){
+      if(t.done)return;
+      tc.all++;if(!isInbox(it))tc.obj++;
+      if(t.g&&groupName(t.g))tc[t.g]++;else tc.none++;
+    });});
+    function tabBtn(v,label,n){return '<button data-a="task-tab" data-v="'+v+'"'+(taskTab===v?' class="on"':'')+'>'+esc(label)+(n?' · '+n:'')+'</button>';}
+    h+='<div class="seg">'+tabBtn('all','Все',tc.all)
+      +(state.taskGroups||[]).map(function(g){return tabBtn(g.id,g.name,tc[g.id]);}).join('')
+      +tabBtn('none','Без группы',tc.none)+tabBtn('obj','По объектам',tc.obj)
+      +'<button data-a="grp-add-open" title="Новая группа">＋ Группа</button></div>';
+    if(addingGroup)
+      h+='<div class="addrow" style="margin:0 0 12px"><input type="text" id="grp-new" placeholder="Название группы, например «Работа»"><button class="btn" data-a="grp-add">Создать</button></div>';
+    if(groupName(taskTab))
+      h+='<div class="addrow" style="margin:0 0 12px"><input type="text" value="'+esc(groupName(taskTab))+'" data-f="grp-name" data-id="'+taskTab+'" title="Название группы">'
+        +'<button class="btn ghost" data-a="grp-del" data-id="'+taskTab+'">Удалить группу</button></div>';
     var withTasks=state.items.filter(visible).slice().sort(function(a,b){
       return (isInbox(b)?1:0)-(isInbox(a)?1:0);       /* «Без объекта» наверх */
     });
     withTasks.forEach(function(it){
-      var list=(it.tasks||[]).filter(function(t){return !t.done;});
+      var list=(it.tasks||[]).filter(function(t){return !t.done&&taskInTab(it,t,taskTab);});
       if(!list.length)return;any=true;
       list.sort(function(a,b){return (a.due||'~')<(b.due||'~')?-1:1;});
       var opened=list.length;
@@ -1893,9 +1911,9 @@ function renderMain(){
         :'<span class="wish-meta" style="margin-left:auto">'+plural(opened,['задача','задачи','задач'])+'</span>'
           +'<button class="x" title="Удалить весь список задач" data-a="del-group" data-id="'+it.id+'">✕ все</button>';
       h+='<div class="groupblock"><h3>'+head+tail+'</h3>'
-        +list.map(function(t){return rowHTML(it.id,'tasks',t,true,false,isInbox(it));}).join('')+'</div>';
+        +list.map(function(t){return rowHTML(it.id,'tasks',t,true,false,isInbox(it),true);}).join('')+'</div>';
     });
-    if(!any)h+='<div class="empty">Открытых задач нет — добавьте новую ниже.</div>';
+    if(!any)h+='<div class="empty">'+(taskTab==='all'?'Открытых задач нет — добавьте новую ниже.':'В этой группе открытых задач нет.')+'</div>';
     {
       h+='<div class="groupblock"><h3>Новая задача</h3><div class="addrow">'
         +'<input type="text" id="sum-task" placeholder="Что нужно сделать…">'
@@ -1905,6 +1923,8 @@ function renderMain(){
         +Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')
         +'</select>'
         +itemSelect('sum-task-item','Объект',true)
+        +((state.taskGroups||[]).length?'<select id="sum-task-group" aria-label="Группа"><option value="">без группы</option>'
+          +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'')
         +'<button class="btn ghost" data-a="sum-add-task">Добавить</button></div>'
         +'<p class="hint">Без объекта задача просто попадёт в этот список; с объектом — ещё и в его карточку, а со сроком — в календарь. Привязать к объекту можно потом.</p></div>';
     }
@@ -2401,6 +2421,21 @@ function itemSelect(id,label,withInbox){
     +list.map(function(it){return '<option value="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</option>';}).join('')
     +'</select>';
 }
+/* группы задач: независимы от объектов, у задачи необязательное поле g */
+function groupName(id){var n='';(state.taskGroups||[]).forEach(function(g){if(g.id===id)n=g.name;});return n;}
+function taskInTab(it,t,tab){
+  if(tab==='all')return true;
+  if(tab==='obj')return !isInbox(it);
+  if(tab==='none')return !t.g||!groupName(t.g);
+  return t.g===tab;
+}
+function groupSelect(itemId,x){
+  if(!(state.taskGroups||[]).length)return '';
+  return '<select class="duein" data-f="task-group" data-id="'+itemId+'" data-sub="'+x.id+'" title="Группа задачи">'
+    +'<option value="">без группы</option>'
+    +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(x.g===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')
+    +'</select>';
+}
 /* выпадающий список «привязать к объекту» для задачи без объекта */
 function moveSelect(itemId,taskId){
   var list=state.items.filter(visible).filter(notInbox);
@@ -2415,7 +2450,7 @@ function insTitle(it,insId){
   (it.instructions||[]).forEach(function(ins){if(ins.id===insId)found=ins.title||'Инструкция';});
   return found;
 }
-function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove){
+function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel){
   var h='<div class="row'+(x.done?' done':'')+'">'
     +'<input type="checkbox" '+(x.done?'checked ':'')+'data-a="tgl" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">'
     +(kind==='plans'?'<span class="kind'+(x.kind==='buy'?' buy':'')+'">'+(x.kind==='buy'?'докупить':'улучшить')+'</span>':'')
@@ -2436,6 +2471,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove){
       +'</select>';
   }
   if(canMove&&kind==='tasks')h+=moveSelect(itemId,x.id);
+  if(groupSel&&kind==='tasks')h+=groupSelect(itemId,x);
   if(delBtn)h+='<button class="x" title="Удалить" data-a="del-sub" data-id="'+itemId+'" data-kind="'+kind+'" data-sub="'+x.id+'">✕</button>';
   return h+'</div>';
 }
@@ -3453,6 +3489,15 @@ function mergeState(data){
           if(x.time)e.time=x.time;
           if(x.repeat)e.repeat=x.repeat;
           if(x.kind)e.kind=x.kind;
+          if(x.g){
+            var gsrc=(data.taskGroups||[]).filter(function(g){return g.id===x.g;})[0];
+            if(gsrc&&gsrc.name){
+              state.taskGroups=state.taskGroups||[];
+              var gdst=state.taskGroups.filter(function(g){return g.name.toLowerCase()===gsrc.name.toLowerCase();})[0];
+              if(!gdst){gdst={id:uid(),name:gsrc.name};state.taskGroups.push(gdst);}
+              e.g=gdst.id;
+            }
+          }
           dst[kind].push(e);
           if(kind==='tasks')added.tasks++;else if(kind==='plans')added.plans++;
         });
@@ -4432,6 +4477,24 @@ function onClick(e){
     toast('Ушло в '+where,'Отменить');
   }
   else if(a==='del-group'){delGroup=id;renderMain();}
+  else if(a==='task-tab'){taskTab=b.dataset.v;addingGroup=false;renderMain();}
+  else if(a==='grp-add-open'){addingGroup=!addingGroup;if(addingGroup)refocus='grp-new';renderMain();}
+  else if(a==='grp-add'){
+    var gi=document.getElementById('grp-new'),gn=gi?gi.value.trim():'';
+    if(!gn){if(gi)gi.focus();return;}
+    markUndo();
+    state.taskGroups=state.taskGroups||[];
+    var ex=state.taskGroups.filter(function(g){return g.name.toLowerCase()===gn.toLowerCase();})[0];
+    if(!ex){ex={id:uid(),name:gn};state.taskGroups.push(ex);}
+    taskTab=ex.id;addingGroup=false;touch();renderAll();
+  }
+  else if(a==='grp-del'){
+    var gd=id;
+    markUndo();
+    state.taskGroups=(state.taskGroups||[]).filter(function(g){return g.id!==gd;});
+    state.items.forEach(function(it){(it.tasks||[]).forEach(function(t){if(t.g===gd)delete t.g;});});
+    taskTab='all';touch();renderAll();toast('Группа удалена, задачи остались без группы','Вернуть');
+  }
   else if(a==='del-done'){
     var dIt=find(id);
     if(dIt){
@@ -4643,6 +4706,8 @@ function onClick(e){
     var sit=(sto&&sto.value===INBOX)?inboxItem():find(sto&&sto.value);
     if(!sit)sit=inboxItem();
     var entry={id:uid(),text:stext,done:false};
+    var stg=document.getElementById('sum-task-group');
+    if(stg&&stg.value)entry.g=stg.value;
     if(std&&std.value)entry.due=std.value;
     var stt=document.getElementById('sum-task-time');
     if(stt&&stt.value){entry.time=stt.value;if(!entry.due)entry.due=todayStr();}
@@ -5057,6 +5122,17 @@ function onChange(e){
     noteDest[t.dataset.id]=noteDest[t.dataset.id]||{};
     noteDest[t.dataset.id].item=t.value;return;
   }
+  if(f==='grp-name'){
+    var gr=(state.taskGroups||[]).filter(function(g){return g.id===t.dataset.id;})[0];
+    if(gr&&t.value.trim()){gr.name=t.value.trim();touch();renderMain();}
+    return;
+  }
+  if(f==='task-group'){
+    var gIt2=find(t.dataset.id);
+    var gTk=gIt2&&(gIt2.tasks||[]).filter(function(x){return x.id===t.dataset.sub;})[0];
+    if(gTk){if(t.value)gTk.g=t.value;else delete gTk.g;touch();renderMain();}
+    return;
+  }
   if(f==='task-move'){
     var mFrom=find(t.dataset.id),mTo=find(t.value);
     if(!mFrom||!mTo)return;
@@ -5187,7 +5263,7 @@ function onChange(e){
 /* открытый раздел запоминаем, чтобы после обновления страницы вернуться в него, а не на главную */
 var UI_KEY='reestr-ui';
 function saveUi(){
-  try{localStorage.setItem(UI_KEY,JSON.stringify({view:route.view,foodTab:foodTab}));}catch(e){}
+  try{localStorage.setItem(UI_KEY,JSON.stringify({view:route.view,foodTab:foodTab,taskTab:taskTab}));}catch(e){}
 }
 function restoreUi(){
   try{
@@ -5196,6 +5272,7 @@ function restoreUi(){
     var ok=u.view==='home'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
     if(ok)route.view=u.view;
     if(u.foodTab==='dishes'||u.foodTab==='diary')foodTab=u.foodTab;
+    if(typeof u.taskTab==='string')taskTab=u.taskTab;
   }catch(e){}
 }
 function renderAll(){renderNav();renderMain();renderDetail();}
@@ -5225,6 +5302,7 @@ function init(){
   if(!state.dishes)state.dishes=[];
   if(!state.exercises)state.exercises=[];
   if(!state.gyms)state.gyms=[];
+  if(!state.taskGroups)state.taskGroups=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.addEventListener('click',onClick);
   document.addEventListener('pointerdown',planDown);
