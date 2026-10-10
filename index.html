@@ -429,7 +429,7 @@ details.help li{margin-bottom:4px}
   nav#nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;overflow-x:auto;min-width:0}
   .navgroup{margin:0;display:flex;gap:6px;align-items:center;flex:none}
   .navgroup h4{display:none}
-  .navtop{position:sticky;left:0;z-index:2;background:var(--bg);padding-right:8px;box-shadow:8px 0 8px -6px var(--bg)}
+  .navtop{display:none}
   .navitem{white-space:nowrap;padding:6px 11px;background:var(--surface2);border-radius:99px}
   .navitem.on{background:var(--accent-soft)}
   header.top{flex-wrap:wrap;gap:8px 10px}
@@ -1789,15 +1789,12 @@ function navSections(){
       {v:'notes',label:'Заметки',n:(state.notes||[]).length,icon:'📝'},
       {v:'bd',label:'Дни рождения',n:(state.birthdays||[]).length,icon:'🎂'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
+      {v:'sales',label:'Продажи',n:state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}).length||null,icon:'💰'},
     ]},
     {title:'Дневники',items:[
       {v:'workouts',label:'Тренировки',n:workoutsOn(today).length||null,icon:'🏋'},
       {v:'food',label:'Питание',n:mealsOn(today).reduce(function(a,m){return a+(m.dishes||[]).length;},0)||null,icon:'🍽'}
     ]},
-    {title:'Продажа',items:[
-      {v:'selling',label:'Сводка',n:saleN||null,icon:'📊'},
-      {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'}
-    ]}
   ];
 }
 function renderNav(){
@@ -1860,6 +1857,92 @@ function cardHTML(it){
 function gridHTML(list,emptyMsg){
   if(!list.length)return '<div class="empty">'+emptyMsg+'</div>';
   return '<div class="grid">'+list.map(cardHTML).join('')+'</div>';
+}
+function sellingHTML(){
+  var h='';
+    var sl=state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}),slSum=0,slPosted=0;
+    sl.forEach(function(i){
+      slSum+=moneyNum(i.price);
+      if(isListed(i))slPosted++;
+    });
+    h=''
+      +'<div class="stat-tiles"><div><b>'+sl.length+'</b><span>на продаже</span></div>'
+      +'<div><b>'+fmtMoney(slSum)+'</b><span>общая цена</span></div>'
+      +'<div><b>'+slPosted+' из '+sl.length+'</b><span>с выложенным объявлением</span></div></div>';
+    if(sl.length)h+='<div class="btnrow" style="margin:0 0 14px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div>';
+    Object.keys(CATS).forEach(function(c){
+      var cl=sl.filter(function(i){return i.cat===c;});
+      if(!cl.length)return;
+      var cs=0;cl.forEach(function(i){cs+=moneyNum(i.price);});
+      h+='<div class="groupblock"><h3>'+CATS[c].icon+' '+CATS[c].label
+        +'<span class="wish-meta" style="margin-left:auto">'+cl.length+(cs?' · '+fmtMoney(cs):'')+'</span></h3>'
+        +cl.map(function(i){
+          var posted=isListed(i);
+          return '<div class="dish"><button class="t" style="text-align:left" data-a="open" data-id="'+i.id+'">'+esc(i.name)+'</button>'
+            +'<button class="x" title="Нажмите, чтобы изменить" data-a="listed-toggle" data-id="'+i.id+'">'+(posted?'✓ выложено':'не выложено')+'</button>'
+            +'<span class="mono">'+(moneyNum(i.price)?fmtMoney(moneyNum(i.price)):'без цены')+'</span></div>';
+        }).join('')+'</div>';
+    });
+    if(!sl.length)h+='<div class="empty">Сейчас ничего не продаётся. Отметьте объект «На продажу» в его карточке — он появится здесь.</div>';
+  return h;
+}
+function soldHTML(){
+  var h='';
+    var all=soldItems();
+    var list3=all.filter(function(it){return inPeriod((it.sold||{}).date,soldPeriod);})
+                 .sort(function(a,b){return ((b.sold||{}).date||'')<((a.sold||{}).date||'')?-1:1;});
+    var gross=0,fees=0,net=0,best=null;
+    list3.forEach(function(it){
+      var sd=soldOf(it);
+      gross+=moneyNum(sd.price);
+      fees+=soldFee(sd)+moneyNum(sd.extra);
+      net+=soldNet(sd);
+      if(!best||soldNet(sd)>soldNet(soldOf(best)))best=it;
+    });
+    var avg=list3.length?Math.round(net/list3.length):0;
+    var onSale=state.items.filter(function(i){return i.status==='sale';});
+    var potential=0;onSale.forEach(function(i){potential+=moneyNum(i.price);});
+    h=''
+      +'<span class="period">'
+      +[['all','всё время'],['year','этот год'],['month','этот месяц']].map(function(pr){
+          return '<button class="'+(soldPeriod===pr[0]?'on':'')+'" data-a="sold-period" data-v="'+pr[0]+'">'+pr[1]+'</button>';
+        }).join('')
+      +'</span>'
+      +'<div class="kpi">'
+      +'<div class="tile lead"><div class="cap">На руки</div><div class="val">'+net.toLocaleString('ru-RU')+' \u20BD</div>'
+        +'<div class="sub">'+plural(list3.length,['продажа','продажи','продаж'])+'</div></div>'
+      +'<div class="tile"><div class="cap">Сумма продаж</div><div class="val">'+gross.toLocaleString('ru-RU')+' \u20BD</div>'
+        +'<div class="sub">до вычетов</div></div>'
+      +'<div class="tile cost"><div class="cap">Комиссии и расходы</div><div class="val">'+fees.toLocaleString('ru-RU')+' \u20BD</div>'
+        +'<div class="sub">'+(gross?Math.round(fees/gross*100):0)+'% от суммы</div></div>'
+      +'<div class="tile"><div class="cap">Средняя продажа</div><div class="val">'+avg.toLocaleString('ru-RU')+' \u20BD</div>'
+        +'<div class="sub">'+(best?'лучшая — '+esc(best.name):'—')+'</div></div>'
+      +(function(){
+        var spent=0,known=0;
+        list3.forEach(function(it){var b=moneyNum(it.buyPrice);if(b){spent+=b;known++;}});
+        if(!known)return '';
+        var d=net-spent;
+        return '<div class="tile"><div class="cap">Против цены покупки</div>'
+          +'<div class="val" style="color:'+(d>=0?'var(--accent)':'var(--danger)')+'">'+(d>=0?'+':'−')+Math.abs(d).toLocaleString('ru-RU')+' \u20BD</div>'
+          +'<div class="sub">по '+plural(known,['вещи','вещам','вещам'])+' с известной ценой</div></div>';
+      })()
+      +'</div>';
+    if(list3.length){
+      h+='<div class="groupblock"><h3>Продажи</h3>';
+      list3.forEach(function(it){
+        var sd=soldOf(it),f2=soldFee(sd)+moneyNum(sd.extra);
+        h+='<div class="sold-row">'
+          +'<span class="log-date">'+(sd.date?fmtDue(sd.date):'—')+'</span>'
+          +'<span class="nm"><button data-a="open" data-id="'+it.id+'" style="font-weight:600">'+esc(it.name)+'</button></span>'
+          +(sd.where?'<span class="wish-meta">'+esc(sd.where)+'</span>':'')
+          +'<span class="mono">'+moneyNum(sd.price).toLocaleString('ru-RU')+' \u20BD</span>'
+          +(f2?'<span class="fee">− '+f2.toLocaleString('ru-RU')+' \u20BD</span>':'')
+          +'<span class="net">'+soldNet(sd).toLocaleString('ru-RU')+' \u20BD</span>'
+          +'</div>';
+      });
+      h+='</div>';
+    }else h+='<div class="empty">За этот период продаж нет. Отметьте вещь «Продано» в её карточке — она попадёт сюда вместе с ценой и комиссией.</div>';
+  return h;
 }
 function renderMain(){
   if(migrateBuy())touch();
@@ -2326,31 +2409,6 @@ function renderMain(){
           return '<button class="'+(newDays.indexOf(i)>=0?'on':'')+'" data-a="ev-dow" data-v="'+i+'">'+d+'</button>';
         }).join('')+'</div><p class="hint">Не выбрано ни одного дня — повтор будет в тот же день недели, что и выбранная дата.</p>':'')
       +'</div>';
-  }else if(v==='selling'){
-    var sl=state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}),slSum=0,slPosted=0;
-    sl.forEach(function(i){
-      slSum+=moneyNum(i.price);
-      if(isListed(i))slPosted++;
-    });
-    h=title('📊 Сводка продаж',sl.length)
-      +'<div class="stat-tiles"><div><b>'+sl.length+'</b><span>на продаже</span></div>'
-      +'<div><b>'+fmtMoney(slSum)+'</b><span>общая цена</span></div>'
-      +'<div><b>'+slPosted+' из '+sl.length+'</b><span>с выложенным объявлением</span></div></div>';
-    if(sl.length)h+='<div class="btnrow" style="margin:0 0 14px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div>';
-    Object.keys(CATS).forEach(function(c){
-      var cl=sl.filter(function(i){return i.cat===c;});
-      if(!cl.length)return;
-      var cs=0;cl.forEach(function(i){cs+=moneyNum(i.price);});
-      h+='<div class="groupblock"><h3>'+CATS[c].icon+' '+CATS[c].label
-        +'<span class="wish-meta" style="margin-left:auto">'+cl.length+(cs?' · '+fmtMoney(cs):'')+'</span></h3>'
-        +cl.map(function(i){
-          var posted=isListed(i);
-          return '<div class="dish"><button class="t" style="text-align:left" data-a="open" data-id="'+i.id+'">'+esc(i.name)+'</button>'
-            +'<button class="x" title="Нажмите, чтобы изменить" data-a="listed-toggle" data-id="'+i.id+'">'+(posted?'✓ выложено':'не выложено')+'</button>'
-            +'<span class="mono">'+(moneyNum(i.price)?fmtMoney(moneyNum(i.price)):'без цены')+'</span></div>';
-        }).join('')+'</div>';
-    });
-    if(!sl.length)h+='<div class="empty">Сейчас ничего не продаётся. Отметьте объект «На продажу» в его карточке — он появится здесь.</div>';
   }else if(v==='tolist'){
     var tl=[];
     state.items.filter(visible).forEach(function(it){
@@ -2370,63 +2428,10 @@ function renderMain(){
           return rowHTML(e.it.id,'tasks',e.t,true,false,false,false,'');
         }).join('')+'</div>'
         :'<div class="empty">Задач «выложить на продажу» нет. Нажмите «＋», выберите вещь — задача появится здесь и в «Задачах».</div>');
-  }else if(v==='sold'){
-    var all=soldItems();
-    var list3=all.filter(function(it){return inPeriod((it.sold||{}).date,soldPeriod);})
-                 .sort(function(a,b){return ((b.sold||{}).date||'')<((a.sold||{}).date||'')?-1:1;});
-    var gross=0,fees=0,net=0,best=null;
-    list3.forEach(function(it){
-      var sd=soldOf(it);
-      gross+=moneyNum(sd.price);
-      fees+=soldFee(sd)+moneyNum(sd.extra);
-      net+=soldNet(sd);
-      if(!best||soldNet(sd)>soldNet(soldOf(best)))best=it;
-    });
-    var avg=list3.length?Math.round(net/list3.length):0;
-    var onSale=state.items.filter(function(i){return i.status==='sale';});
-    var potential=0;onSale.forEach(function(i){potential+=moneyNum(i.price);});
-    h=title('✅ Продано',list3.length)
-      +'<span class="period">'
-      +[['all','всё время'],['year','этот год'],['month','этот месяц']].map(function(pr){
-          return '<button class="'+(soldPeriod===pr[0]?'on':'')+'" data-a="sold-period" data-v="'+pr[0]+'">'+pr[1]+'</button>';
-        }).join('')
-      +'</span>'
-      +'<div class="kpi">'
-      +'<div class="tile lead"><div class="cap">На руки</div><div class="val">'+net.toLocaleString('ru-RU')+' \u20BD</div>'
-        +'<div class="sub">'+plural(list3.length,['продажа','продажи','продаж'])+'</div></div>'
-      +'<div class="tile"><div class="cap">Сумма продаж</div><div class="val">'+gross.toLocaleString('ru-RU')+' \u20BD</div>'
-        +'<div class="sub">до вычетов</div></div>'
-      +'<div class="tile cost"><div class="cap">Комиссии и расходы</div><div class="val">'+fees.toLocaleString('ru-RU')+' \u20BD</div>'
-        +'<div class="sub">'+(gross?Math.round(fees/gross*100):0)+'% от суммы</div></div>'
-      +'<div class="tile"><div class="cap">Средняя продажа</div><div class="val">'+avg.toLocaleString('ru-RU')+' \u20BD</div>'
-        +'<div class="sub">'+(best?'лучшая — '+esc(best.name):'—')+'</div></div>'
-      +(function(){
-        var spent=0,known=0;
-        list3.forEach(function(it){var b=moneyNum(it.buyPrice);if(b){spent+=b;known++;}});
-        if(!known)return '';
-        var d=net-spent;
-        return '<div class="tile"><div class="cap">Против цены покупки</div>'
-          +'<div class="val" style="color:'+(d>=0?'var(--accent)':'var(--danger)')+'">'+(d>=0?'+':'−')+Math.abs(d).toLocaleString('ru-RU')+' \u20BD</div>'
-          +'<div class="sub">по '+plural(known,['вещи','вещам','вещам'])+' с известной ценой</div></div>';
-      })()
-      +'</div>';
-    if(onSale.length)h+='<p class="hint" style="margin:-6px 0 14px">Сейчас на продаже: '+plural(onSale.length,['вещь','вещи','вещей'])+
-      (potential?' на '+potential.toLocaleString('ru-RU')+' \u20BD':'')+'.</p>';
-    if(list3.length){
-      h+='<div class="groupblock"><h3>Продажи</h3>';
-      list3.forEach(function(it){
-        var sd=soldOf(it),f2=soldFee(sd)+moneyNum(sd.extra);
-        h+='<div class="sold-row">'
-          +'<span class="log-date">'+(sd.date?fmtDue(sd.date):'—')+'</span>'
-          +'<span class="nm"><button data-a="open" data-id="'+it.id+'" style="font-weight:600">'+esc(it.name)+'</button></span>'
-          +(sd.where?'<span class="wish-meta">'+esc(sd.where)+'</span>':'')
-          +'<span class="mono">'+moneyNum(sd.price).toLocaleString('ru-RU')+' \u20BD</span>'
-          +(f2?'<span class="fee">− '+f2.toLocaleString('ru-RU')+' \u20BD</span>':'')
-          +'<span class="net">'+soldNet(sd).toLocaleString('ru-RU')+' \u20BD</span>'
-          +'</div>';
-      });
-      h+='</div>';
-    }else h+='<div class="empty">За этот период продаж нет. Отметьте вещь «Продано» в её карточке — она попадёт сюда вместе с ценой и комиссией.</div>';
+  }else if(v==='sales'){
+    h=title('💰 Продажи',state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}).length+soldItems().length)
+      +'<div class="sechead"><h3>На продаже</h3></div>'+sellingHTML()
+      +'<div class="sechead"><h3>Продано</h3></div>'+soldHTML();
   }else if(v==='places'){
     var pls=placesAll();
     h=title('📦 Хранение',pls.length)
