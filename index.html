@@ -1954,16 +1954,14 @@ function renderMain(){
     });});
     pays.sort(function(a,b){return (a.t.due||'~')<(b.t.due||'~')?-1:(a.t.due||'~')>(b.t.due||'~')?1:0;});
     var dNow=new Date(),monthEnd=dNow.getFullYear()+'-'+pad2(dNow.getMonth()+1)+'-'+pad2(new Date(dNow.getFullYear(),dNow.getMonth()+1,0).getDate());
-    var in30=shiftDay(td,30),sOver=0,sMonth=0,s30=0;
+    var in30=shiftDay(td,30),sMonth=0,s30=0;
     pays.forEach(function(x){
       var d=x.t.due;if(!d)return;
-      if(d<td)sOver+=x.sum;
       if(d>=td&&d<=monthEnd)sMonth+=x.sum;
       if(d>=td&&d<=in30)s30+=x.sum;
     });
     h=title('💳 Платежи',pays.length)
-      +'<div class="stat-tiles"><div><b>'+fmtMoney(sOver)+'</b><span>просрочено</span></div>'
-      +'<div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
+      +'<div class="stat-tiles"><div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
       +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>'
       +'<div class="groupblock"><h3>Новый платёж</h3><div class="addrow" style="margin-top:0">'
       +'<input type="text" id="pay-text" placeholder="Что оплатить, например «Интернет»">'
