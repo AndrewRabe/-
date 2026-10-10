@@ -380,7 +380,8 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
 .duebtn:hover{outline:1px solid var(--accent)}
-.duebtn.none{background:transparent;border:1px dashed var(--line);font-weight:500}
+.duebtn.none{background:transparent;border:0;padding:1px 4px;font-size:14px;line-height:1;filter:grayscale(1);opacity:.6}
+.duebtn.none:hover{filter:none;opacity:1}
 .duepick{position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;pointer-events:none;border:0;padding:0}
 .due.today{background:var(--sale-soft);color:var(--sale)}
 .due.over{background:transparent;color:var(--danger);border:1px solid var(--danger)}
@@ -2553,7 +2554,7 @@ function rowHTML(itemId,kind,x,delBtn,dueEdit,canMove,groupSel,label){
   if(kind==='tasks'&&x.due&&dueEdit)h+='<button class="x" title="В календарь телефона" data-a="task-ics" data-id="'+itemId+'" data-sub="'+x.id+'">📅</button>';
   /* дата — кнопка: по щелчку открывается выбор новой даты (в карточке объекта правка уже встроена) */
   if(kind==='tasks'&&!dueEdit&&!x.done)
-    h+='<span class="due duebtn '+(x.due?dueClass(x.due):'none')+'" data-a="due-pick" title="Изменить срок">'+(x.due?fmtDue(x.due):'＋ срок')
+    h+='<span class="due duebtn '+(x.due?dueClass(x.due):'none')+'" data-a="due-pick" title="'+(x.due?'Изменить срок':'Назначить срок')+'">'+(x.due?fmtDue(x.due):'📅')
       +'<input type="date" class="duepick" tabindex="-1" value="'+esc(x.due||'')+'" data-f="task-due" data-id="'+itemId+'" data-sub="'+x.id+'"></span>';
   else if(kind==='tasks'&&x.due&&!dueEdit)h+='<span class="due '+dueClass(x.due)+'">'+fmtDue(x.due)+'</span>';
   if(kind==='tasks'&&dueEdit){
