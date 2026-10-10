@@ -431,7 +431,6 @@ details.help li{margin-bottom:4px}
 
 <header class="top">
   <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Домашний <span class="leaf">реестр</span></div>
-  <input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off">
   <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
   <button class="iconbtn" data-a="note-new" title="Быстрая заметка">📝</button>
   <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
@@ -1690,6 +1689,11 @@ function pruneInbox(){
   if(it&&!(it.tasks||[]).length&&!(it.plans||[]).length&&!(it.questions||[]).length)
     state.items=state.items.filter(notInbox);
 }
+/* поиск и добавление объекта живут в разделах с объектами, а не в шапке */
+function objToolbar(withNew){
+  return '<div class="addrow" style="margin:0 0 14px"><input id="q" type="search" placeholder="Поиск по объектам…" autocomplete="off" value="'+esc(query)+'">'
+    +(withNew?'<button class="btn" data-a="new">+ Объект</button>':'')+'</div>';
+}
 function matches(it){
   if(!query)return true;
   var q=query.toLowerCase();
@@ -1837,10 +1841,12 @@ function renderMain(){
     var cat=v==='all'?null:v.slice(4);
     var list=state.items.filter(visible).filter(notInbox).filter(function(i){return !cat||i.cat===cat;}).filter(matches);
     h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Все объекты',list.length)
-      +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':'Здесь пока пусто. Добавьте первый кнопкой <b>«➕ Объект»</b> на главной.');
+      +objToolbar(true)
+      +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':'Здесь пока пусто. Добавьте первый кнопкой <b>«+ Объект»</b> выше.');
   }else if(v==='sale'||v==='archive'){
     var list2=state.items.filter(function(i){return i.status===v;}).filter(matches);
     h=title(v==='sale'?'💰 На продажу':'🗄 Архив',list2.length)
+      +objToolbar(false)
       +(v==='sale'&&list2.length?'<div class="btnrow" style="margin:-4px 0 14px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div>':'')
       +gridHTML(list2,v==='sale'?'Отметьте объект «На продажу» в его карточке — он появится здесь.':'Отправляйте сюда то, чем больше не пользуетесь: продали, выбросили, отдали.');
   }else if(v==='tasks'){
@@ -4366,7 +4372,7 @@ function onClick(e){
       if(!tgt&&to==='task')tgt=inboxItem();
       if(!tgt){
         var firstObj=state.items.filter(visible).filter(notInbox)[0];
-        if(!firstObj){toast('Для этого нужен объект — заведите его кнопкой «➕ Объект» на главной');return;}
+        if(!firstObj){toast('Для этого нужен объект — заведите его кнопкой «➕ Объект» на главной или «+ Объект» в разделе объектов');return;}
         tgt=firstObj;
       }
     }
@@ -5176,7 +5182,6 @@ function init(){
   if(!state.exercises)state.exercises=[];
   if(!state.gyms)state.gyms=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
-  document.getElementById('q').addEventListener('input',function(e){query=e.target.value.trim();renderMain();});
   document.addEventListener('click',onClick);
   document.addEventListener('pointerdown',planDown);
   document.addEventListener('pointermove',planMove);
@@ -5186,6 +5191,12 @@ function init(){
   /* подсказки из справочника — только когда начали вводить, а не при фокусе */
   document.addEventListener('input',function(e){
     var t=e.target;
+    if(t&&t.id==='q'){
+      query=t.value.trim();renderMain();
+      var q2=document.getElementById('q');
+      if(q2){q2.focus();var L=q2.value.length;try{q2.setSelectionRange(L,L);}catch(x){}}
+      return;
+    }
     if(!t||!t.dataset||!t.dataset.book)return;
     if(t.value.trim()){if(t.getAttribute('list')!==t.dataset.book)t.setAttribute('list',t.dataset.book);}
     else t.removeAttribute('list');
