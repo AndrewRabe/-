@@ -1810,11 +1810,31 @@ function renderNav(){
 }
 
 /* ══════════ основная область ══════════ */
+/* выложена ли вещь на продажу: явная отметка или любая площадка с объявлением */
+function isListed(it){
+  if(it.listed===true)return true;
+  if(it.listed===false)return false;
+  var pf=(it.ad&&it.ad.platforms)||{};
+  return Object.keys(pf).some(function(k){return pf[k]&&pf[k].posted;});
+}
+function openSellTask(it){return (it.tasks||[]).filter(function(t){return t.sell&&!t.done;})[0];}
+/* возвращает true, если создана новая задача «выложить на продажу» */
+function ensureSellTask(it){
+  if(openSellTask(it))return false;
+  it.tasks=it.tasks||[];
+  it.tasks.push({id:uid(),text:'Выложить на продажу: '+it.name,done:false,sell:true});
+  return true;
+}
+function setListed(it,v){
+  it.listed=!!v;
+  if(v)(it.tasks||[]).forEach(function(t){if(t.sell&&!t.done)t.done=true;});    /* выложили — задача выполнена */
+  else if(it.status==='sale')ensureSellTask(it);
+}
 function cardHTML(it){
   var badge='';
   if(catOf(it)==='home'&&(it.home||{}).kind&&it.status==='active')
     badge='<span class="badge archive">'+HOME_KINDS[it.home.kind].toLowerCase()+'</span>';
-  if(it.status==='sale')badge='<span class="badge sale">продажа'+(it.price?' · '+esc(it.price):'')+'</span>';
+  if(it.status==='sale')badge='<span class="badge sale">'+(isListed(it)?'выложено':'не выложено')+(it.price?' · '+esc(it.price):'')+'</span>';
   if(it.status==='sold'){
     var sdc=it.sold||{};
     badge='<span class="badge sale">продано'+(moneyNum(sdc.price)?' · '+soldNet(sdc).toLocaleString('ru-RU')+' \u20BD':'')+'</span>';
@@ -2306,8 +2326,7 @@ function renderMain(){
     var sl=state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}),slSum=0,slPosted=0;
     sl.forEach(function(i){
       slSum+=moneyNum(i.price);
-      var pf=(i.ad&&i.ad.platforms)||{};
-      if(Object.keys(pf).some(function(k){return pf[k]&&pf[k].posted;}))slPosted++;
+      if(isListed(i))slPosted++;
     });
     h=title('📊 Сводка продаж',sl.length)
       +'<div class="stat-tiles"><div><b>'+sl.length+'</b><span>на продаже</span></div>'
@@ -2321,9 +2340,9 @@ function renderMain(){
       h+='<div class="groupblock"><h3>'+CATS[c].icon+' '+CATS[c].label
         +'<span class="wish-meta" style="margin-left:auto">'+cl.length+(cs?' · '+fmtMoney(cs):'')+'</span></h3>'
         +cl.map(function(i){
-          var pf=(i.ad&&i.ad.platforms)||{},posted=Object.keys(pf).filter(function(k){return pf[k]&&pf[k].posted;}).length;
+          var posted=isListed(i);
           return '<div class="dish"><button class="t" style="text-align:left" data-a="open" data-id="'+i.id+'">'+esc(i.name)+'</button>'
-            +(posted?'<span class="wish-meta">выложено: '+posted+'</span>':'<span class="wish-meta">не выложено</span>')
+            +'<button class="x" title="Нажмите, чтобы изменить" data-a="listed-toggle" data-id="'+i.id+'">'+(posted?'✓ выложено':'не выложено')+'</button>'
             +'<span class="mono">'+(moneyNum(i.price)?fmtMoney(moneyNum(i.price)):'без цены')+'</span></div>';
         }).join('')+'</div>';
     });
@@ -2660,6 +2679,10 @@ function renderDetail(){
     +'<button class="'+(it.status==='sold'?'on':'')+'" data-a="status" data-id="'+it.id+'" data-v="sold">Продано</button>'
     +'<button class="'+(it.status==='archive'?'on':'')+'" data-a="status" data-id="'+it.id+'" data-v="archive">В архив</button>'
     +'</span></div>';
+  if(it.status==='sale')
+    h+='<div class="d-ctl" style="margin:-4px 0 10px"><span class="seg">'
+      +'<button class="'+(!isListed(it)?'on':'')+'" data-a="listed-toggle" data-id="'+it.id+'"'+(!isListed(it)?' disabled':'')+'>Не выложено</button>'
+      +'<button class="'+(isListed(it)?'on sale':'')+'" data-a="listed-toggle" data-id="'+it.id+'"'+(isListed(it)?' disabled':'')+'>Выложено</button></span></div>';
   if(it.status==='active'||it.status==='archive')
     h+='<div class="btnrow" style="margin:-4px 0 10px"><button class="btn ghost" data-a="sell-task" data-id="'+it.id+'">📤 Задача: выложить на продажу</button></div>';
 
@@ -4782,7 +4805,11 @@ function onClick(e){
     route.item=item.id;renderAll();
   }
   else if(a==='status'&&it){
+    var prevSt=it.status;
     it.status=b.dataset.v;
+    var newSellTask=false;
+    if(it.status==='sale'&&prevSt!=='sale'){it.listed=false;newSellTask=ensureSellTask(it);}
+    else if(it.status!=='sale'){delete it.listed;(it.tasks||[]).forEach(function(t){if(t.sell&&!t.done&&it.status==='sold')t.done=true;});}
     if(it.status==='sold'){
       var sd0=soldOf(it);
       if(!sd0.date)sd0.date=todayStr();
@@ -4794,6 +4821,13 @@ function onClick(e){
       }
     }
     touch();renderAll();
+    if(newSellTask)toast('Создана задача «выложить на продажу»');
+  }
+  else if(a==='listed-toggle'&&it){
+    markUndo();
+    setListed(it,!isListed(it));
+    touch();renderAll();
+    toast(isListed(it)?'Отмечено: выложено':'Отмечено: не выложено, создана задача','Отменить');
   }
   else if(a==='due-pick'){
     var dpi=b.querySelector('.duepick');
@@ -4806,6 +4840,7 @@ function onClick(e){
       if(x.id!==b.dataset.sub)return;
       if(b.dataset.kind==='tasks'&&x.buy&&!x.done&&!x.repeat&&!x.owned)askBuy={item:it.id,task:x.id};
       if(b.dataset.kind==='tasks'&&x.sell&&!x.done&&!x.repeat&&it.status!=='sale'&&it.status!=='sold')askSell=it.id;
+      if(b.dataset.kind==='tasks'&&x.sell&&!x.done&&it.status==='sale')it.listed=true;
       if(b.dataset.kind==='tasks'&&!x.done&&isPay(x))x.hist=(x.hist||[]).concat([todayStr()]);   /* журнал оплат */
       if(b.dataset.kind==='tasks'&&x.repeat&&!x.done){
         var base=x.due||todayStr();
@@ -4840,7 +4875,7 @@ function onClick(e){
   else if(a==='sell-go'&&it){
     var spr=document.getElementById('sl-price');
     markUndo();
-    it.status='sale';
+    it.status='sale';it.listed=true;
     if(spr&&spr.value.trim())it.price=spr.value.trim();
     touch();closeModal();renderAll();
     toast('«'+it.name+'» переведена в «На продажу»','Отменить');
@@ -5519,6 +5554,7 @@ function onChange(e){
   else if(f==='pl-posted'){
     var pp=adPlatforms(it)[t.dataset.k];
     pp.posted=t.checked;
+    if(t.checked&&it.status==='sale')setListed(it,true);
     if(t.checked&&!pp.date)pp.date=todayStr();
     if(!t.checked){pp.date='';pp.url='';}
     renderDetail();
