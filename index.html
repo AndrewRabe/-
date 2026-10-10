@@ -3255,13 +3255,24 @@ function parseTaskLists(text){
   return out;
 }
 var importLists=null;
+/* по названию списка («По машине», «По квартире») подбираем объект подходящей категории */
+function guessTarget(name){
+  var n=String(name||'').toLowerCase(),cat='';
+  if(/машин|авто|гараж/.test(n))cat='car';
+  else if(/квартир|жиль|ремонт/.test(n))cat='home';
+  else if(/техник/.test(n))cat='tech';
+  else if(/одежд|гардероб/.test(n))cat='cloth';
+  if(!cat)return '';
+  var it=state.items.filter(visible).filter(notInbox).filter(function(i){return i.cat===cat;})[0];
+  return it?it.id:'';
+}
 function doImportTasks(file){
   readAny(file,function(text){
     try{importLists=parseTaskLists(text);}catch(e){toast('Не удалось разобрать файл задач: '+e.message);return;}
     if(!importLists||!importLists.length){toast('В файле не нашлось задач');return;}
     importLists.forEach(function(L){
       L.pick=L.tasks.some(function(t){return !t.done;});   /* списки с открытыми задачами отмечаем сразу */
-      if(!L.target)L.target=INBOX;
+      if(!L.target)L.target=guessTarget(L.name)||INBOX;
     });
     closeSettings();openImportTasks();
   });
@@ -3526,7 +3537,7 @@ function applyTransfer(text){
     if(!importLists.length){toast('В файле не нашлось ни задач, ни объектов');return;}
     importLists.forEach(function(L){
       L.pick=L.tasks.some(function(t){return !t.done;});
-      if(!L.target)L.target=INBOX;
+      if(!L.target)L.target=guessTarget(L.name)||INBOX;
     });
     closeSettings();openImportTasks();
   }catch(e){toast('Файл не разобрался: '+e.message);}
