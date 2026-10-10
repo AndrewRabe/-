@@ -1605,9 +1605,9 @@ function dayNav(){
     +'<input type="date" value="'+esc(diaryDay)+'" data-f="diary-date"></div>';
 }
 /* перекусов за день может быть несколько — различаем по времени */
-function mealKey(m){return m.date+'|'+m.slot+(m.slot==='snack'?'|'+(m.time||''):'');}
+function mealKey(m){return m.date+'|'+m.slot+'|'+(m.time||'');}
 function findMeal(slot,id){
-  var l=mealsOn(diaryDay).filter(function(x){return id?x.id===id:(slot!=='snack'&&x.slot===slot);});
+  var l=mealsOn(diaryDay).filter(function(x){return id?x.id===id:false;});
   return l[0]||null;
 }
 /* количество блюда (необязательно, «2 шт», «200 г») хранится параллельно в m.q */
@@ -1926,6 +1926,9 @@ function renderMain(){
       return order.indexOf(x.slot)-order.indexOf(y.slot);
     }).forEach(function(x){blocks.push({sl:x.slot,m:x});});
     order.forEach(function(sl){if(openSlots[sl])blocks.push({sl:sl,m:null});});
+    h+='<div class="quick" style="margin:0 0 12px"><span class="lbl">Добавить приём пищи:</span>'
+      +order.filter(function(sl){return !openSlots[sl];}).map(function(sl){
+        return '<button data-a="open-slot" data-v="'+sl+'">＋ '+SLOTS[sl]+'</button>';}).join('')+'</div>';
     if(!blocks.length)h+='<p class="hint" style="margin:0 0 8px">В этот день ничего не записано. Добавьте приём пищи ниже.</p>';
     blocks.forEach(function(bk){
       var sl=bk.sl,m=bk.m,key=m?m.id:sl,idA=m?' data-id="'+m.id+'"':'';
@@ -1959,9 +1962,6 @@ function renderMain(){
         +'<div class="addrow"><button class="btn ghost" data-a="meal-close">Готово</button></div>';
       h+='</div>';
     });
-    h+='<div class="quick" style="margin:0 0 12px"><span class="lbl">добавить:</span>'
-      +order.filter(function(sl){return !openSlots[sl]&&(sl==='snack'||!day.some(function(x){return x.slot===sl;}));}).map(function(sl){
-        return '<button data-a="open-slot" data-v="'+sl+'">＋ '+SLOTS[sl]+'</button>';}).join('')+'</div>';
     if(state.dishes&&state.dishes.length)
       h+='<div class="groupblock"><h3>Мои блюда<span class="wish-meta" style="margin-left:auto">'+state.dishes.length+'</span></h3>'
         +bookTop('dishes',200).map(function(x){
