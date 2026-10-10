@@ -1437,7 +1437,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false;
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false;
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1745,12 +1745,17 @@ function navSections(){
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
   att+=eventsOn(today).length+bdsOn(today).length;
-  var cats=[{v:'all',label:'Всё',n:objs.length,icon:'🗂'}];
+  var cats=[],saleN=state.items.filter(function(i){return i.status==='sale';}).length;
   Object.keys(CATS).forEach(function(c){
     cats.push({v:'cat:'+c,label:CATS[c].label,n:objs.filter(function(i){return i.cat===c;}).length,icon:CATS[c].icon});
   });
+  cats.push({v:'sale',label:'На продажу',n:saleN,icon:'💰'});
   return [
-    {title:'Разделы',items:cats},
+    {title:'Имущество',items:cats},
+    {title:'Продажа',items:[
+      {v:'selling',label:'Сводка',n:saleN||null,icon:'📊'},
+      {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'}
+    ]},
     {title:'Задачи',items:[
       {v:'tasks',label:'Задачи',n:tasksN,icon:'☑'},
       {v:'pay',label:'Платежи',n:payN||null,icon:'💳'},
@@ -1768,11 +1773,6 @@ function navSections(){
       {v:'workouts',label:'Тренировки',n:workoutsOn(today).length||null,icon:'🏋'},
       {v:'food',label:'Питание',n:mealsOn(today).reduce(function(a,m){return a+(m.dishes||[]).length;},0)||null,icon:'🍽'}
     ]},
-    {title:'Статусы',items:[
-      {v:'sale',label:'На продажу',n:state.items.filter(function(i){return i.status==='sale';}).length,icon:'💰'},
-      {v:'sold',label:'Продано',n:soldItems().length,icon:'✅'},
-      {v:'archive',label:'Архив',n:state.items.filter(function(i){return i.status==='archive';}).length,icon:'🗄'}
-    ]}
   ];
 }
 function renderNav(){
@@ -1872,10 +1872,17 @@ function renderMain(){
     });
   }else if(v==='all'||v.indexOf('cat:')===0){
     var cat=v==='all'?null:v.slice(4);
-    var list=state.items.filter(visible).filter(notInbox).filter(function(i){return !cat||i.cat===cat;}).filter(matches);
-    h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Все объекты',list.length)
+    var inCat=function(i){return notInbox(i)&&(!cat||i.cat===cat);};
+    var onSaleC=state.items.filter(function(i){return i.status==='sale'&&inCat(i);});
+    var archC=state.items.filter(function(i){return i.status==='archive'&&inCat(i);});
+    var list=(propStatus==='archive'?archC:state.items.filter(visible).filter(inCat)).filter(matches);
+    h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Всё имущество',list.length)
       +objToolbar(true)
-      +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':'Здесь пока пусто. Добавьте первый кнопкой <b>«+ Объект»</b> выше.');
+      +'<div class="seg"><button data-a="prop-status" data-v="active"'+(propStatus==='active'?' class="on"':'')+'>Активные</button>'
+      +'<button data-a="prop-status" data-v="archive"'+(propStatus==='archive'?' class="on"':'')+'>🗄 Архив'+(archC.length?' · '+archC.length:'')+'</button>'
+      +'<button data-a="prop-sale"'+(showSale?' class="on"':'')+'>💰 На продаже'+(onSaleC.length?' · '+onSaleC.length:'')+'</button></div>'
+      +(showSale?'<div class="groupblock"><h3>💰 На продаже</h3>'+gridHTML(onSaleC,'Здесь ничего не продаётся. Отметьте объект «На продажу» в его карточке.')+'</div>':'')
+      +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':(propStatus==='archive'?'В архиве пусто.':'Здесь пока пусто. Добавьте первый кнопкой <b>«+ Объект»</b> выше.'));
   }else if(v==='sale'||v==='archive'){
     var list2=state.items.filter(function(i){return i.status===v;}).filter(matches);
     h=title(v==='sale'?'💰 На продажу':'🗄 Архив',list2.length)
@@ -2315,6 +2322,32 @@ function renderMain(){
       +(YD.ready()?'<button class="btn ghost" data-a="wish-refresh">Обновить цены монитора</button>':'')
       +'<button class="btn ghost" data-a="wish-export-monitor">Файл для Ozon-монитора ('+ozonN+')</button></div>'
       +'<p class="hint">Цены проверяет программа-монитор: в облаке по расписанию или на вашем компьютере. Файл со списком нужен, чтобы добавить товары в монитор, запущенный вручную.</p>';
+  }else if(v==='selling'){
+    var sl=state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}),slSum=0,slPosted=0;
+    sl.forEach(function(i){
+      slSum+=moneyNum(i.price);
+      var pf=(i.ad&&i.ad.platforms)||{};
+      if(Object.keys(pf).some(function(k){return pf[k]&&pf[k].posted;}))slPosted++;
+    });
+    h=title('📊 Сводка продаж',sl.length)
+      +'<div class="stat-tiles"><div><b>'+sl.length+'</b><span>на продаже</span></div>'
+      +'<div><b>'+fmtMoney(slSum)+'</b><span>общая цена</span></div>'
+      +'<div><b>'+slPosted+' из '+sl.length+'</b><span>с выложенным объявлением</span></div></div>';
+    if(sl.length)h+='<div class="btnrow" style="margin:0 0 14px"><button class="btn ghost" data-a="x-open">Архив объявлений…</button></div>';
+    Object.keys(CATS).forEach(function(c){
+      var cl=sl.filter(function(i){return i.cat===c;});
+      if(!cl.length)return;
+      var cs=0;cl.forEach(function(i){cs+=moneyNum(i.price);});
+      h+='<div class="groupblock"><h3>'+CATS[c].icon+' '+CATS[c].label
+        +'<span class="wish-meta" style="margin-left:auto">'+cl.length+(cs?' · '+fmtMoney(cs):'')+'</span></h3>'
+        +cl.map(function(i){
+          var pf=(i.ad&&i.ad.platforms)||{},posted=Object.keys(pf).filter(function(k){return pf[k]&&pf[k].posted;}).length;
+          return '<div class="dish"><button class="t" style="text-align:left" data-a="open" data-id="'+i.id+'">'+esc(i.name)+'</button>'
+            +(posted?'<span class="wish-meta">выложено: '+posted+'</span>':'<span class="wish-meta">не выложено</span>')
+            +'<span class="mono">'+(moneyNum(i.price)?fmtMoney(moneyNum(i.price)):'без цены')+'</span></div>';
+        }).join('')+'</div>';
+    });
+    if(!sl.length)h+='<div class="empty">Сейчас ничего не продаётся. Отметьте объект «На продажу» в его карточке — он появится здесь.</div>';
   }else if(v==='sold'){
     var all=soldItems();
     var list3=all.filter(function(it){return inPeriod((it.sold||{}).date,soldPeriod);})
@@ -4335,6 +4368,8 @@ function onClick(e){
   }
   else if(a==='w-day'){diaryDay=b.dataset.v;route.view='workouts';renderNav();renderMain();}
   else if(a==='food-day'){diaryDay=b.dataset.v;route.view='food';renderNav();renderMain();}
+  else if(a==='prop-status'){propStatus=b.dataset.v;renderMain();}
+  else if(a==='prop-sale'){showSale=!showSale;renderMain();}
   else if(a==='food-tab'){foodTab=b.dataset.v;renderMain();}
   else if(a==='meal-open'){openMeal=id;renderMain();}
   else if(a==='meal-close'){openMeal=null;renderMain();}
