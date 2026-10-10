@@ -1433,7 +1433,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={};
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null;
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1930,6 +1930,16 @@ function renderMain(){
     blocks.forEach(function(bk){
       var sl=bk.sl,m=bk.m,key=m?m.id:sl,idA=m?' data-id="'+m.id+'"':'';
       var ds2=(m&&m.dishes)||[];
+      /* записанный приём пищи показан сжато, по щелчку раскрывается для правки */
+      if(m&&openMeal!==m.id){
+        h+='<div class="groupblock slot" data-a="meal-open" data-id="'+m.id+'" style="cursor:pointer" title="Нажмите, чтобы изменить">'
+          +'<h4>'+SLOTS[sl]+(m.time?'<span class="wish-meta" style="margin-left:8px;text-transform:none">'+esc(m.time)+(m.end?'–'+esc(m.end):'')+'</span>':'')
+          +'<span class="wish-meta" style="margin-left:auto;text-transform:none">изменить</span></h4>'
+          +(ds2.length?'<div>'+ds2.map(function(x,i){return esc(dishText(m,i));}).join(', ')+'</div>':'<p class="hint" style="margin:0">Пока ничего не записано.</p>')
+          +(m.note?'<div class="wish-meta" style="margin-top:4px">'+esc(m.note)+'</div>':'')
+          +'</div>';
+        return;
+      }
       h+='<div class="groupblock slot"><h4>'+SLOTS[sl]+(ds2.length?' — '+ds2.length:'')
         +'<input type="time" class="duein" id="mtime-'+key+'" value="'+esc(m?(m.time||''):defaultTime(sl))+'" data-f="meal-time" data-v="'+sl+'"'+idA+' title="Начало" style="margin-left:8px">'
         +'<span class="wish-meta" style="margin:0 4px">–</span>'
@@ -1945,7 +1955,8 @@ function renderMain(){
       h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+key+'" placeholder="Что было… (несколько — через «;»)" autocomplete="off">'
         +'<input type="text" id="dq-'+key+'" placeholder="Кол-во" title="Сколько (необязательно), например 2 шт" style="flex:none;width:84px">'
         +'<button class="btn ghost" data-a="add-dish" data-v="'+sl+'"'+idA+'>Добавить</button></div>';
-      if(m)h+='<div class="addrow" style="margin-top:8px"><input type="text" value="'+esc(m.note||'')+'" data-f="meal-note" data-v="'+sl+'"'+idA+' placeholder="Заметка к приёму пищи (необязательно)"></div>';
+      if(m)h+='<div class="addrow" style="margin-top:8px"><input type="text" value="'+esc(m.note||'')+'" data-f="meal-note" data-v="'+sl+'"'+idA+' placeholder="Заметка к приёму пищи (необязательно)"></div>'
+        +'<div class="addrow"><button class="btn ghost" data-a="meal-close">Готово</button></div>';
       h+='</div>';
     });
     h+='<div class="quick" style="margin:0 0 12px"><span class="lbl">добавить:</span>'
@@ -4172,6 +4183,8 @@ function onClick(e){
   }
   else if(a==='w-day'){diaryDay=b.dataset.v;route.view='workouts';renderNav();renderMain();}
   else if(a==='food-day'){diaryDay=b.dataset.v;route.view='food';renderNav();renderMain();}
+  else if(a==='meal-open'){openMeal=id;renderMain();}
+  else if(a==='meal-close'){openMeal=null;renderMain();}
   else if(a==='open-slot'){
     openSlots[b.dataset.v]=true;
     refocus='dish-'+b.dataset.v;renderAll();
@@ -4190,7 +4203,7 @@ function onClick(e){
     markUndo();
     state.meals=state.meals||[];
     var mm=findMeal(slot,b.dataset.id);
-    if(!mm){var tin=document.getElementById('mtime-'+slot);mm={id:uid(),date:diaryDay,slot:slot,time:(tin&&tin.value)||defaultTime(slot),end:(document.getElementById('mend-'+slot)||{}).value||'',dishes:[],note:''};state.meals.push(mm);delete openSlots[slot];}
+    if(!mm){var tin=document.getElementById('mtime-'+slot);mm={id:uid(),date:diaryDay,slot:slot,time:(tin&&tin.value)||defaultTime(slot),end:(document.getElementById('mend-'+slot)||{}).value||'',dishes:[],note:''};state.meals.push(mm);delete openSlots[slot];openMeal=mm.id;}
     mm.dishes=mm.dishes||[];
     mm.q=mm.q||[];while(mm.q.length<mm.dishes.length)mm.q.push('');
     var qin=document.getElementById('dq-'+(b.dataset.id||slot)),qv=(qin&&names.length===1)?qin.value.trim():'';
