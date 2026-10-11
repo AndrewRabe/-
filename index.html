@@ -404,6 +404,14 @@ form.ntform{}
 .mm-chip .x{padding:0 4px}
 .inl{flex:1 1 140px;min-width:0;background:transparent;border-color:transparent;padding:3px 6px}
 .inl:hover,.inl:focus{border-color:var(--line);background:var(--surface)}
+.vc-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.vc-mic.rec{background:var(--danger);border-color:var(--danger)}
+.modal-box textarea{width:100%;min-height:70px}
+.vc-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0;padding:6px 0;border-bottom:1px solid var(--line)}
+.modal-box .vc-row input,.modal-box .vc-row select{width:auto;font-size:13.5px}
+.modal-box .vc-row input[type=text]{flex:1 1 120px;min-width:0}
+.modal-box .vc-row input[type=checkbox]{flex:none}
+.vc-tag{font-size:16px}
 button.plusbtn{font-size:18px;line-height:1;padding:6px 14px}
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
@@ -467,6 +475,7 @@ details.help li{margin-bottom:4px}
   <div class="topline">
     <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Личный <span class="leaf">кабинет</span></div>
     <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
+    <button class="iconbtn" data-a="voice" title="Голосовой ввод: что сделал и поел" aria-label="Голосовой ввод">🎤</button>
     <button class="iconbtn" data-a="note-new" title="Быстрая заметка" aria-label="Быстрая заметка">✏️</button>
     <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
   </div>
@@ -3283,7 +3292,244 @@ function mealDraftTake(){
   mealDraftList();
   return true;
 }
-function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
+/* ══════════ голосовой ввод: «что сделал и поел» одной фразой ══════════ */
+var VNUM={ноль:0,один:1,одна:1,одну:1,одного:1,два:2,две:2,три:3,четыре:4,пять:5,шесть:6,семь:7,восемь:8,девять:9,десять:10,
+  одиннадцать:11,двенадцать:12,тринадцать:13,четырнадцать:14,пятнадцать:15,шестнадцать:16,семнадцать:17,восемнадцать:18,девятнадцать:19,
+  двадцать:20,тридцать:30,сорок:40,пятьдесят:50,шестьдесят:60,семьдесят:70,восемьдесят:80,девяносто:90,сто:100,полтора:1.5};
+/* «двадцать пять» → «25», «пять» → «5» (границы слов — через lookaround: \\b не работает с кириллицей) */
+var VNUM_RE=new RegExp('(?<![а-я])('+Object.keys(VNUM).sort(function(x,y){return y.length-x.length;}).join('|')+')(?:\\s+(один|одна|одну|два|две|три|четыре|пять|шесть|семь|восемь|девять))?(?![а-я])','g');
+function voiceNumbers(t){
+  return t.replace(VNUM_RE,function(all,x,y){
+    var v=VNUM[x];
+    if(y){if(v>=20&&v<100&&v%10===0)return String(v+VNUM[y]);return String(v)+' '+String(VNUM[y]);}
+    return String(v);
+  });
+}
+function voiceDate(t){
+  var td=todayStr(),due='',rest=t,m;
+  var days={понедельник:1,вторник:2,среду:3,четверг:4,пятницу:5,субботу:6,воскресенье:0};
+  if(/(?<![а-яa-z0-9])послезавтра(?![а-яa-z0-9])/.test(rest)){due=shiftDay(td,2);rest=rest.replace(/(?<![а-яa-z0-9])послезавтра(?![а-яa-z0-9])/,' ');}
+  else if(/(?<![а-яa-z0-9])завтра(?![а-яa-z0-9])/.test(rest)){due=shiftDay(td,1);rest=rest.replace(/(?<![а-яa-z0-9])завтра(?![а-яa-z0-9])/,' ');}
+  else if(/(?<![а-яa-z0-9])сегодня(?![а-яa-z0-9])/.test(rest)){due=td;rest=rest.replace(/(?<![а-яa-z0-9])сегодня(?![а-яa-z0-9])/,' ');}
+  else if((m=/(?<![а-яa-z0-9])через\s+(\d+)\s+(?:дн[а-я\w]+|день)/.exec(rest))){due=shiftDay(td,parseInt(m[1],10));rest=rest.replace(m[0],' ');}
+  else if(/(?<![а-яa-z0-9])через\s+неделю(?![а-яa-z0-9])/.test(rest)){due=shiftDay(td,7);rest=rest.replace(/(?<![а-яa-z0-9])через\s+неделю(?![а-яa-z0-9])/,' ');}
+  else if((m=/(?<![а-яa-z0-9])(?:в|во)\s+(понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье)(?![а-яa-z0-9])/.exec(rest))){
+    var want=days[m[1]],cur=new Date().getDay(),add=(want-cur+7)%7||7;
+    due=shiftDay(td,add);rest=rest.replace(m[0],' ');
+  }
+  return {due:due,rest:rest};
+}
+function voiceTime(t){
+  var m,time='',rest=t;
+  if((m=/(?<![а-яa-z0-9])в\s*(\d{1,2})[:.\s](\d{2})(?![а-яa-z0-9])/.exec(rest))&&parseInt(m[1],10)<24&&parseInt(m[2],10)<60){time=pad2(parseInt(m[1],10))+':'+m[2];rest=rest.replace(m[0],' ');}
+  else if((m=/(?<![а-яa-z0-9])в\s*(\d{1,2})\s*(утра|вечера|дня|ночи)(?![а-яa-z0-9])/.exec(rest))){
+    var h=parseInt(m[1],10);if(m[2]==='вечера'&&h<12)h+=12;if(m[2]==='дня'&&h<8)h+=12;
+    time=pad2(h)+':00';rest=rest.replace(m[0],' ');
+  }else if((m=/(?<![а-яa-z0-9])в\s*(\d{1,2})\s*час(?:ов|а)?(?![а-яa-z0-9])(?!\s*(?:дня|ночи))/.exec(rest))&&parseInt(m[1],10)<24){time=pad2(parseInt(m[1],10))+':00';rest=rest.replace(m[0],' ');}
+  return {time:time,rest:rest};
+}
+/* «2 эклера», «борщ 300 грамм» → {n,q} */
+function voiceQty(s){
+  s=s.trim();
+  var u='(шт[а-я\\w]*|штук[а-я\\w]*|кус[а-я\\w]+|тарел[а-я\\w]+|стакан[а-я\\w]*|чаш[а-я\\w]+|ложк[а-я\\w]+|порци[а-я\\w]+|грамм[а-я\\w]*|гр|г|мл|л)';
+  var m=new RegExp('^(\\d+(?:[.,]\\d+)?)\\s*'+u+'?\\s+(.+)$').exec(s);
+  if(m)return {n:m[3].trim(),q:(m[1]+(m[2]?' '+m[2]:'')).replace('.',',')};
+  m=new RegExp('^(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s*'+u+'$').exec(s);
+  if(m)return {n:m[1].trim(),q:(m[2]+' '+m[3]).replace('.',',')};
+  return {n:s,q:''};
+}
+/* «борщом» → «борщ», «кашей» → «каша», «чаем» → «чай»: приблизительно, результат можно поправить в окне */
+function voiceBase(w){
+  var r=[[/аем$/,'ай'],[/яем$/,'яй'],[/ицей$/,'ица'],[/[шщжч]ей$/,function(m){return m.charAt(0)+'а';}],[/кой$/,'ка'],[/ой$/,'а'],[/ом$/,''],[/ем$/,'']];
+  if(w.length<4)return w;
+  for(var i=0;i<r.length;i++){if(r[i][0].test(w))return w.replace(r[i][0],r[i][1]);}
+  return w;
+}
+function voiceDishList(body){
+  return body.split(/\s+и\s+|,\s*/).map(function(x){x=x.replace(/^(и|с|на)\s+/,'').trim();var ws=x.split(' ');if(ws[0]&&!/^\d/.test(ws[0]))ws[0]=voiceBase(ws[0]);return ws.join(' ');}).filter(Boolean);
+}
+function vcap(s){s=String(s||'').trim();return s.charAt(0).toUpperCase()+s.slice(1);}
+var V_BUY=/(купить|купи(?![а-яa-z0-9])|докупить|покупк|закупить)/,V_PAY=/(оплатить|заплатить|оплата|платеж|погасить)/,V_GO=/(сходить|посетить|съездить|заехать|зайти в|поехать в)/;
+var V_WORK=/(пробежал|побегал|бегал|пробежк|тренировк|тренировал|занимался|качал|покачал|плавал|поплавал|бассейн|катался|велосипед|йог|растяжк|в зале|отжимал|подтягивал|приседал|жим(?![а-яa-z0-9])|присед|штанг|футбол|баскетбол|теннис|волейбол|гулял|прогулк|прошел|ходьб)/;
+var V_FOOD=/(поел|ела(?![а-яa-z0-9])|ел(?![а-яa-z0-9])|съел|пообедал|позавтракал|поужинал|перекусил|выпил|пила(?![а-яa-z0-9])|пил(?![а-яa-z0-9])|завтрак|обед|ужин|перекус)/;
+function voiceKind(t){
+  if(/(бег|пробеж|побегал)/.test(t))return 'Бег';
+  if(/(плав|бассейн)/.test(t))return 'Бассейн';
+  if(/(велосипед|катался)/.test(t))return 'Велосипед';
+  if(/(растяж|йог)/.test(t))return 'Растяжка';
+  if(/(футбол|баскетбол|теннис|волейбол)/.test(t))return 'Игра';
+  if(/(гулял|прогулк|ходьб|прошел)/.test(t))return 'Ходьба';
+  if(/(зал|качал|жим|присед|штанг|отжим|подтяг|силов)/.test(t))return 'Силовая';
+  return 'Другое';
+}
+function voiceSlot(t){
+  if(/(завтрак|позавтракал)/.test(t))return 'breakfast';
+  if(/(обед|пообедал)/.test(t))return 'lunch';
+  if(/(ужин|поужинал)/.test(t))return 'dinner';
+  if(/(перекус|перекусил)/.test(t))return 'snack';
+  var h=new Date().getHours();
+  return h<11?'breakfast':h<16?'lunch':h<21?'dinner':'snack';
+}
+/* Разбор фразы на записи: приём пищи, тренировка, задача/покупка/платёж/«сходить» */
+function voiceParse(raw){
+  var text=voiceNumbers(String(raw||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim());
+  if(!text)return [];
+  var parts=[];
+  text.split(/[.;!?\n]+/).forEach(function(sent){
+    sent.split(/,\s*|\s+(?:а потом|потом|затем|после этого|а еще|еще|а также|также)\s+/).forEach(function(p){p=p.trim();if(p)parts.push(p);});
+  });
+  var out=[],last=null;
+  parts.forEach(function(p){
+    var kind=V_BUY.test(p)?'buy':V_PAY.test(p)?'pay':V_GO.test(p)?'go':V_WORK.test(p)?'workout':V_FOOD.test(p)?'meal':'';
+    if(!kind){
+      /* продолжение списка («…борщ, хлеб») */
+      if(last&&(last.t==='meal'||(last.t==='task'&&last.type==='buy'))){
+        last.text+='; '+(last.t==='meal'?voiceDishList(p).join('; '):p.replace(/^и\s+/,''));return;
+      }
+      kind='task';
+    }
+    var e;
+    if(kind==='meal'){
+      var place='';
+      var pm=/(?<![а-яa-z0-9])(дома|на работе|в кафе|в ресторане|в столовой|в гостях)(?![а-яa-z0-9])/.exec(p);
+      if(pm){place=pm[1].replace(/^на /,'').replace(/^в /,'');place={'дома':'Дома','работе':'Работа','кафе':'Кафе','ресторане':'Ресторан','столовой':'Столовая','гостях':'В гостях'}[place]||vcap(place);p=p.replace(pm[0],' ');}
+      var slot=voiceSlot(p);
+      var body=p.replace(/(?<![а-яa-z0-9])(поел[аи]?|съел[аи]?|ел[аи]?|пообедал[аи]?|позавтракал[аи]?|поужинал[аи]?|перекусил[аи]?|выпил[аи]?|пил[аи]?|на завтрак|на обед|на ужин|на перекус|завтрак[а-я\w]*|обед[а-я\w]*|ужин[а-я\w]*|перекус[а-я\w]*|утром|днем|вечером|ночью|сегодня|потом|и еще)(?![а-яa-z0-9])/g,' ').replace(/\s+/g,' ').trim();
+      var dishes=voiceDishList(body);
+      e={t:'meal',slot:slot,place:place,text:dishes.join('; '),pick:true};
+    }else if(kind==='workout'){
+      var dur=0,m;
+      if((m=/(\d+(?:[.,]\d+)?)\s*(минут[а-я\w]*|мин(?![а-яa-z0-9])|час[а-я\w]*|ч(?![а-яa-z0-9]))/.exec(p))){dur=parseFloat(m[1].replace(',','.'))*(/^(час|ч)/.test(m[2])?60:1);}
+      else if(/полчаса/.test(p))dur=30;else if(/(?<![а-яa-z0-9])час(?![а-яa-z0-9])/.test(p))dur=60;
+      var wplace='';
+      if(/в зале/.test(p))wplace='gym';else if(/(на улице|на стадионе|в парке)/.test(p))wplace='outdoor';else if(/(?<![а-яa-z0-9])дома(?![а-яa-z0-9])/.test(p))wplace='home';
+      var dist='';if((m=/(\d+(?:[.,]\d+)?)\s*(?:км|километр[а-я\w]*)/.exec(p)))dist=m[1]+' км';
+      var exs=[],em;
+      if((em=/([а-я]+(?:\s+[а-я]+)?)\s+(\d+)\s*подход[а-я\w]*\s*по\s*(\d+)\s*(?:раз|повтор[а-я\w]*)?\s*(?:по|с весом)\s*(\d+)/.exec(p))){
+        var sets=[];for(var si=0;si<Math.min(parseInt(em[2],10),20);si++)sets.push({r:em[3],w:em[4]});
+        exs.push({name:vcap(em[1].replace(/^(жал|делал|сделал)\s+/,'')),s:sets});
+      }else if((em=/([а-я]+(?:\s+[а-я]+)?)\s+(\d+)\s*(?:раз|повтор[а-я\w]*|раза)?\s*по\s*(\d+)\s*(?:кг|килограмм[а-я\w]*)?/.exec(p))){
+        exs.push({name:vcap(em[1]),s:[{r:em[2],w:em[3]}]});
+      }
+      var wk=voiceKind(p);if(exs.length&&wk==='Другое')wk='Силовая';
+      e={t:'workout',kind:wk,place:wplace,dur:dur?String(Math.round(dur)):'',text:vcap(dist||((wk==='Другое'&&!exs.length)?p.replace(/(?<![а-яa-z0-9])(сегодня|утром|днем|вечером)(?![а-яa-z0-9])/g,' ').replace(/\s+/g,' ').trim():'')),exs:exs,pick:true};
+    }else{
+      var d=voiceDate(p),tm=voiceTime(d.rest),body2=tm.rest,type='general',sum='',tmm;
+      if(!tm.time&&(tmm=/(?<![а-яa-z0-9])в\s*(\d{1,2})(?![\d:а-я])\s+(?=[а-я])/.exec(body2))&&parseInt(tmm[1],10)>=6&&parseInt(tmm[1],10)<=23){tm.time=pad2(parseInt(tmm[1],10))+':00';body2=body2.replace(tmm[0],' ');}
+      var sm=/(\d[\d\s]*)\s*(?:руб[а-я\w]*|₽)/.exec(body2);
+      if(kind==='buy'){type='buy';body2=body2.replace(/(?<![а-яa-z0-9])(надо|нужно|не забыть)\s+/g,' ').replace(V_BUY,' ');}
+      else if(kind==='pay'){type='pay';if(sm){sum=sm[1].replace(/\s/g,'');body2=body2.replace(sm[0],' ');}}
+      else if(kind==='go'){type='go';}
+      body2=body2.replace(/(?<![а-яa-z0-9])(надо|нужно|мне|не забыть|напомни(?:ть)?)\s+/g,' ').replace(/\s+/g,' ').replace(/^и\s+/,'').trim();
+      if(!body2)return;
+      e={t:'task',type:type,text:vcap(body2),due:d.due,time:tm.time,sum:sum,pick:true};
+    }
+    out.push(e);last=e;
+  });
+  /* «купить хлеб, молоко и яйца» → три покупки */
+  var res=[];
+  out.forEach(function(e){
+    if(e.t==='task'&&e.type==='buy'){
+      e.text.split(/;|\s+и\s+/).map(function(x){return x.trim();}).filter(Boolean).forEach(function(x){res.push({t:'task',type:'buy',text:vcap(x),due:e.due,time:e.time,sum:'',pick:true});});
+    }else res.push(e);
+  });
+  return res;
+}
+var voiceItems=[],voiceRec=null,voiceListening=false;
+function voiceSupported(){return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}
+function voiceEntryHTML(e,i){
+  var pick='<input type="checkbox" data-f="vc-pick" data-k="'+i+'"'+(e.pick?' checked':'')+'>';
+  if(e.t==='meal')
+    return '<div class="vc-row">'+pick+'<span class="vc-tag">🍽</span>'
+      +'<select data-f="vc-slot" data-k="'+i+'">'+Object.keys(SLOTS).map(function(k){return '<option value="'+k+'"'+(e.slot===k?' selected':'')+'>'+SLOTS[k]+'</option>';}).join('')+'</select>'
+      +'<input type="text" data-f="vc-text" data-k="'+i+'" value="'+esc(e.text)+'" title="Блюда через «;»">'
+      +'<input type="text" data-f="vc-place" data-k="'+i+'" value="'+esc(e.place||'')+'" placeholder="где" style="width:90px"></div>';
+  if(e.t==='workout')
+    return '<div class="vc-row">'+pick+'<span class="vc-tag">🏋</span>'
+      +'<select data-f="vc-kind" data-k="'+i+'">'+WKINDS.map(function(k){return '<option'+(e.kind===k?' selected':'')+'>'+k+'</option>';}).join('')+'</select>'
+      +'<input type="text" data-f="vc-text" data-k="'+i+'" value="'+esc(e.text)+'" placeholder="заметка">'
+      +'<input type="text" inputmode="numeric" data-f="vc-dur" data-k="'+i+'" value="'+esc(e.dur||'')+'" placeholder="мин" style="width:62px"><span class="wish-meta">мин</span>'
+      +(e.exs&&e.exs.length?'<div class="wish-meta" style="flex-basis:100%;padding-left:28px">'+e.exs.map(function(x){return esc(x.name)+': '+x.s.length+'×'+esc(x.s[0].r)+' по '+esc(x.s[0].w)+' кг';}).join('; ')+'</div>':'')+'</div>';
+  var types={general:'☑',buy:'🛒',pay:'💳',go:'🧭'};
+  return '<div class="vc-row">'+pick+'<span class="vc-tag">'+types[e.type]+'</span>'
+    +'<select data-f="vc-type" data-k="'+i+'">'+Object.keys(types).map(function(k){return '<option value="'+k+'"'+(e.type===k?' selected':'')+'>'+{general:'Задача',buy:'Покупка',pay:'Платёж',go:'Сходить'}[k]+'</option>';}).join('')+'</select>'
+    +'<input type="text" data-f="vc-text" data-k="'+i+'" value="'+esc(e.text)+'">'
+    +'<input type="date" data-f="vc-due" data-k="'+i+'" value="'+esc(e.due||'')+'" class="duein" title="Срок">'
+    +(e.type==='pay'?'<input type="text" inputmode="decimal" data-f="vc-sum" data-k="'+i+'" value="'+esc(e.sum||'')+'" placeholder="₽" style="width:76px">':'')+'</div>';
+}
+function voiceRenderItems(){
+  var box=document.getElementById('vc-items'),sv=document.getElementById('vc-save');
+  if(!box)return;
+  box.innerHTML=voiceItems.length?voiceItems.map(voiceEntryHTML).join('')
+    :'<p class="wish-meta" style="margin:8px 0">Ничего не разобрано. Скажите, например: «пообедал борщом и хлебом, пробежал пять километров, завтра купить молоко».</p>';
+  if(sv)sv.disabled=!voiceItems.some(function(e){return e.pick;});
+}
+function openVoice(){
+  voiceItems=[];
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  m.innerHTML='<div class="modal-box"><h3>Голосовой ввод</h3>'
+    +'<div class="vc-top"><button class="btn vc-mic" id="vc-mic" data-a="vc-mic">🎤 Говорить</button>'
+    +'<span class="wish-meta" id="vc-status">'+(voiceSupported()?'Нажмите и скажите: что съели, чем занимались, что нужно сделать.':'Распознавание речи в этом браузере недоступно — введите текст или диктуйте клавиатурой телефона.')+'</span></div>'
+    +'<textarea id="vc-text" rows="3" placeholder="Например: пообедал борщом и хлебом, пробежал 5 километров, завтра в 18 позвонить в банк, купить молоко"></textarea>'
+    +'<div class="addrow" style="margin-top:6px"><button class="btn ghost" data-a="vc-parse">Разобрать</button></div>'
+    +'<div id="vc-items"></div>'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="vc-close">Отмена</button>'
+    +'<button class="btn" id="vc-save" data-a="vc-save" disabled>Сохранить</button></div></div>';
+  voiceRenderItems();
+}
+function voiceStop(){if(voiceRec){try{voiceRec.stop();}catch(e){}}voiceListening=false;var b=document.getElementById('vc-mic');if(b){b.textContent='🎤 Говорить';b.classList.remove('rec');}}
+function voiceStart(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast('Распознавание речи не поддерживается — введите текст');return;}
+  if(voiceListening){voiceStop();return;}
+  var ta=document.getElementById('vc-text'),st=document.getElementById('vc-status'),b=document.getElementById('vc-mic');
+  var base=ta&&ta.value.trim()?ta.value.trim()+' ':'';
+  voiceRec=new SR();voiceRec.lang='ru-RU';voiceRec.interimResults=true;voiceRec.continuous=true;
+  voiceRec.onresult=function(ev){
+    var txt='';for(var i=0;i<ev.results.length;i++)txt+=ev.results[i][0].transcript+' ';
+    if(ta)ta.value=base+txt.trim();
+  };
+  voiceRec.onerror=function(ev){
+    if(st)st.textContent=ev.error==='not-allowed'||ev.error==='service-not-allowed'?'Нет доступа к микрофону — разрешите его в настройках браузера.':'Ошибка распознавания: '+ev.error;
+    voiceStop();
+  };
+  voiceRec.onend=function(){
+    var was=voiceListening;voiceStop();
+    if(was&&ta&&ta.value.trim()){voiceItems=voiceParse(ta.value);voiceRenderItems();}
+  };
+  try{voiceRec.start();voiceListening=true;if(b){b.textContent='⏹ Стоп';b.classList.add('rec');}if(st)st.textContent='Слушаю…';}catch(e){toast('Не удалось включить микрофон');}
+}
+function voiceSave(){
+  var td=todayStr(),n=0,t0=nowHM();
+  voiceItems.forEach(function(e){
+    if(!e.pick)return;
+    if(e.t==='meal'){
+      var names=String(e.text).split(/;/).map(function(x){return x.trim();}).filter(Boolean);
+      if(!names.length)return;
+      var meal={id:uid(),date:td,slot:e.slot,time:t0,end:'',dishes:[],q:[],f:[],place:(e.place||'').trim(),note:''};
+      names.forEach(function(x){var q=voiceQty(x);meal.dishes.push(bookAdd('dishes',vcap(q.n)));meal.q.push(q.q);meal.f.push('');});
+      if(meal.place)bookAdd('eatplaces',meal.place);
+      state.meals=state.meals||[];state.meals.push(meal);n++;
+    }else if(e.t==='workout'){
+      state.workouts=state.workouts||[];
+      state.workouts.push({id:uid(),date:td,kind:e.kind||'Другое',time:t0,dur:String(e.dur||'').trim(),note:e.text||'',place:e.place||'',gym:'',
+        exs:(e.exs||[]).map(function(x){bookAdd('exercises',x.name);return {id:uid(),name:x.name,s:x.s};})});
+      n++;
+    }else{
+      var txt=String(e.text||'').trim();if(!txt)return;
+      var host=inboxItem(),tk={id:uid(),text:txt,done:false};
+      if(e.type==='buy')tk.buy=true;else if(e.type==='go')tk.go=true;
+      else if(e.type==='pay'){tk.pay=true;var sv=num(e.sum);if(sv>0)tk.sum=sv;}
+      if(e.due)tk.due=e.due;
+      if(e.time){tk.time=e.time;if(!tk.due)tk.due=td;}
+      host.tasks=host.tasks||[];host.tasks.push(tk);n++;
+    }
+  });
+  return n;
+}
+
+function closeModal(){if(typeof voiceStop==='function')voiceStop();var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
 /* ══════════ настройки ══════════ */
 function openSettings(){
@@ -4761,6 +5007,17 @@ function onClick(e){
   else if(a==='food-tab'){foodTab=b.dataset.v;renderMain();}
   else if(a==='meal-open'){openMeal=id;renderMain();}
   else if(a==='meal-close'){openMeal=null;renderMain();}
+  else if(a==='voice'){openVoice();}
+  else if(a==='vc-mic'){voiceStart();}
+  else if(a==='vc-parse'){var vta=document.getElementById('vc-text');voiceItems=voiceParse(vta?vta.value:'');voiceRenderItems();}
+  else if(a==='vc-close'){closeModal();}
+  else if(a==='vc-save'){
+    markUndo();
+    var vn=voiceSave();
+    if(!vn){toast('Нечего сохранять');return;}
+    touch();closeModal();renderAll();
+    toast('Добавлено записей: '+vn,'Отменить');
+  }
   else if(a==='meal-new'){openMealModal(b.dataset.v);}
   else if(a==='mm-type'){
     mealDraft.slot=b.dataset.v;
@@ -5858,6 +6115,21 @@ function onChange(e){
       if(ln&&(!mn||ln<mn))w0.min=w0.last;
     }
     touch();renderNav();renderMain();
+    return;
+  }
+  if(f.indexOf('vc-')===0){
+    var ve=voiceItems[t.dataset.k];
+    if(ve){
+      if(f==='vc-pick'){ve.pick=t.checked;var vsb=document.getElementById('vc-save');if(vsb)vsb.disabled=!voiceItems.some(function(x){return x.pick;});}
+      else if(f==='vc-slot')ve.slot=t.value;
+      else if(f==='vc-text')ve.text=t.value;
+      else if(f==='vc-place')ve.place=t.value;
+      else if(f==='vc-kind')ve.kind=t.value;
+      else if(f==='vc-dur')ve.dur=t.value;
+      else if(f==='vc-due')ve.due=t.value;
+      else if(f==='vc-sum')ve.sum=t.value;
+      else if(f==='vc-type'){ve.type=t.value;voiceRenderItems();}
+    }
     return;
   }
   if(f==='ev-e-title'||f==='ev-e-time'||f==='ev-e-date'){
