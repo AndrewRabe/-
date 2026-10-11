@@ -1781,12 +1781,14 @@ function navSections(){
   var today=todayStr(),att=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=today)att++;});});
   att+=eventsOn(today).length+bdsOn(today).length;
-  var cats=[],saleN=state.items.filter(function(i){return i.status==='sale';}).length;
+  var cats=[],homeN=objs.filter(function(i){return i.cat==='home';}).length,saleN=state.items.filter(function(i){return i.status==='sale';}).length;
   Object.keys(CATS).forEach(function(c){
+    if(c==='home')return;                       /* жильё — отдельная группа, не имущество */
     cats.push({v:'cat:'+c,label:CATS[c].label,n:objs.filter(function(i){return i.cat===c;}).length,icon:CATS[c].icon});
   });
   cats.push({v:'sale',label:'На продажу',n:saleN,icon:'💰'});
   return [
+    {title:'Жильё',items:[{v:'cat:home',label:CATS.home.label,n:homeN,icon:CATS.home.icon}]},
     {title:'Имущество',items:cats},
     {title:'Задачи',items:[
       {v:'tasks',label:'Общие',n:tasksN,icon:'☑'},
