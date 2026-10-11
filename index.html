@@ -448,7 +448,7 @@ details.help li{margin-bottom:4px}
   /* minmax(0,…) — иначе колонка не сжимается ниже содержимого и страница едет вбок */
   .shell{grid-template-columns:minmax(0,1fr)}
   /* лента меню прокручивается сама и не растягивает страницу */
-  nav#nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;overflow-x:auto;min-width:0}
+  nav#nav{display:none}                  /* на узком экране разделы — плитки на «Главной», вторая линия ссылок не нужна */
   .navgroup{margin:0;display:flex;gap:6px;align-items:center;flex:none}
   .navgroup h4{display:none}
   #chip{font-size:0;gap:0;padding:6px}                /* на узком экране от статуса синхронизации остаётся цветная точка */
