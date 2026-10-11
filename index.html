@@ -390,6 +390,9 @@ form.ntform{}
 .ntgrid[hidden]{display:none}
 .ntf{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
 .ntf input,.ntf select{font-size:14px;color:var(--ink)}
+.mm-list{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.mm-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border-radius:999px;padding:3px 6px 3px 12px;font-size:13.5px}
+.mm-chip .x{padding:0 4px}
 button.plusbtn{font-size:18px;line-height:1;padding:6px 14px}
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
@@ -2179,8 +2182,8 @@ function renderMain(){
     order.forEach(function(sl){if(openSlots[sl])blocks.push({sl:sl,m:null});});
     h+='<div class="quick" style="margin:0 0 12px"><span class="lbl">Добавить приём пищи:</span>'
       +order.filter(function(sl){return !openSlots[sl];}).map(function(sl){
-        return '<button data-a="open-slot" data-v="'+sl+'">＋ '+SLOTS[sl]+'</button>';}).join('')+'</div>';
-    if(!blocks.length)h+='<p class="hint" style="margin:0 0 8px">В этот день ничего не записано. Добавьте приём пищи ниже.</p>';
+        return '<button data-a="meal-new" data-v="'+sl+'">＋ '+SLOTS[sl]+'</button>';}).join('')+'</div>';
+    if(!blocks.length)h+='<p class="hint" style="margin:0 0 8px">В этот день ничего не записано. Выберите приём пищи выше.</p>';
     blocks.forEach(function(bk){
       var sl=bk.sl,m=bk.m,key=m?m.id:sl,idA=m?' data-id="'+m.id+'"':'';
       var ds2=(m&&m.dishes)||[];
@@ -3169,6 +3172,48 @@ function openGoPlan(itemId,taskId){
     +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
     +'<button class="btn" data-a="go-plan-run" data-id="'+itemId+'" data-sub="'+taskId+'">В календарь</button></div></div>';
   document.getElementById('gp-date').focus();
+}
+/* новый приём пищи собирается в отдельном окне: введённое в других приёмах не мешает */
+var mealDraft=null;
+function mealDraftList(){
+  var l=document.getElementById('mm-list');
+  if(!l)return;
+  l.innerHTML=mealDraft.dishes.map(function(d,i){
+    return '<span class="mm-chip">'+esc(d.n)+(d.q?' <span class="wish-meta">('+esc(d.q)+')</span>':'')
+      +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button></span>';
+  }).join('')||'<span class="wish-meta">Блюда пока не добавлены</span>';
+}
+function openMealModal(slot){
+  mealDraft={slot:slot,dishes:[]};
+  var m=document.getElementById('modal');
+  m.hidden=false;
+  m.innerHTML='<div class="modal-box"><h3>Новый приём пищи</h3>'
+    +'<input type="hidden" id="mm-slot" value="'+slot+'">'
+    +'<div class="seg mm-seg">'+Object.keys(SLOTS).map(function(k){
+        return '<button data-a="mm-type" data-v="'+k+'"'+(k===slot?' class="on"':'')+'>'+SLOTS[k]+'</button>';}).join('')+'</div>'
+    +'<div class="addrow" style="margin-top:10px;align-items:center"><label style="margin:0">Время</label>'
+    +'<input type="time" id="mm-time" value="'+esc(defaultTime(slot))+'" style="width:auto"><span class="wish-meta">–</span>'
+    +'<input type="time" id="mm-end" style="width:auto" title="Окончание (необязательно)"></div>'
+    +'<label>Что ели</label>'
+    +'<div class="addrow" style="margin-top:0"><input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Блюдо (несколько — через «;»)" style="width:auto;flex:1 1 150px">'
+    +'<input type="text" id="mm-q" placeholder="Кол-во" style="width:84px;flex:none">'
+    +'<button class="btn ghost" data-a="mm-add-dish">＋</button></div>'
+    +'<div id="mm-list" class="mm-list"></div>'
+    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<button class="btn" data-a="mm-save">Сохранить</button></div></div>';
+  mealDraftList();
+  document.getElementById('mm-dish').focus();
+}
+/* из поля ввода — в черновик (несколько блюд через «;») */
+function mealDraftTake(){
+  var di=document.getElementById('mm-dish'),qi=document.getElementById('mm-q');
+  var names=String(di?di.value:'').split(/[;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
+  if(!names.length)return false;
+  var q=(qi&&names.length===1)?qi.value.trim():'';
+  names.forEach(function(n){mealDraft.dishes.push({n:n,q:q});});
+  if(di)di.value='';if(qi)qi.value='';
+  mealDraftList();
+  return true;
 }
 function closeModal(){var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
 
@@ -4623,6 +4668,26 @@ function onClick(e){
   else if(a==='food-tab'){foodTab=b.dataset.v;renderMain();}
   else if(a==='meal-open'){openMeal=id;renderMain();}
   else if(a==='meal-close'){openMeal=null;renderMain();}
+  else if(a==='meal-new'){openMealModal(b.dataset.v);}
+  else if(a==='mm-type'){
+    mealDraft.slot=b.dataset.v;
+    document.getElementById('mm-slot').value=b.dataset.v;
+    document.querySelectorAll('.mm-seg button').forEach(function(x){x.classList.toggle('on',x.dataset.v===b.dataset.v);});
+    var mt0=document.getElementById('mm-time');if(mt0)mt0.value=defaultTime(b.dataset.v);
+  }
+  else if(a==='mm-add-dish'){mealDraftTake();var md0=document.getElementById('mm-dish');if(md0)md0.focus();}
+  else if(a==='mm-del'){mealDraft.dishes.splice(parseInt(b.dataset.i,10),1);mealDraftList();}
+  else if(a==='mm-save'){
+    mealDraftTake();
+    if(!mealDraft.dishes.length){var md1=document.getElementById('mm-dish');if(md1)md1.focus();toast('Добавьте хотя бы одно блюдо');return;}
+    var mtm=document.getElementById('mm-time'),mnd=document.getElementById('mm-end');
+    markUndo();
+    var nm={id:uid(),date:diaryDay,slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],note:''};
+    mealDraft.dishes.forEach(function(d){nm.dishes.push(bookAdd('dishes',d.n));nm.q.push(d.q||'');});
+    state.meals=state.meals||[];state.meals.push(nm);
+    mealDraft=null;touch();closeModal();renderAll();
+    toast('Приём пищи добавлен','Отменить');
+  }
   else if(a==='open-slot'){
     openSlots[b.dataset.v]=true;
     refocus='dish-'+b.dataset.v;renderAll();
