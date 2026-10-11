@@ -472,6 +472,8 @@ details.help li{margin-bottom:4px}
   <nav class="topblocks" id="topblocks" aria-label="Основные блоки">
     <button data-a="go" data-v="home">🏠 Главная</button>
     <button data-a="go" data-v="cal">📅 Календарь</button>
+    <button data-a="go" data-v="cat:home">🏠 Жильё</button>
+    <button data-a="go" data-v="property">📦 Имущество</button>
     <button data-a="go" data-v="tasks">☑ Задачи</button>
     <button data-a="go" data-v="notes">📝 Заметки</button>
     <button data-a="go" data-v="diaries">📔 Дневники</button>
@@ -994,6 +996,7 @@ function adoptRemote(remote){
   if(!state.exercises)state.exercises=[];
   if(!state.gyms)state.gyms=[];
   if(!state.taskGroups)state.taskGroups=[];
+  if(!state.customCats)state.customCats=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   writeLocal();renderAll();
 }
@@ -1482,7 +1485,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false, addOpen={};
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, addingKind=false, propTab='all', foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false, addOpen={};
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1798,6 +1801,7 @@ function nv(view,label,count,icon){
 }
 /* один перечень разделов: из него строится и боковое меню, и плитки главной */
 function navSections(){
+  applyCustomCats();
   var act=state.items.filter(visible),objs=act.filter(notInbox);
   var tasksN=0,plansN=0,buyN=0,impN=0,doneN=0,payN=0,sellN2=0,goN=0;
   act.forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&isGeneral(t))tasksN++;if(!t.done&&t.go)goN++;});plansN+=openCount(it.plans);
@@ -1837,10 +1841,14 @@ function navSections(){
 }
 function renderNav(){
   var h='';
-  var TOPMAP={home:['home'],cal:['cal'],tasks:['tasks','pay','buy','improve','go','tolist','done'],notes:['notes'],diaries:['diaries','food','workouts']};
+  var TOPMAP={home:['home'],cal:['cal'],'cat:home':['cat:home'],tasks:['tasks','pay','buy','improve','go','tolist','done'],notes:['notes'],diaries:['diaries','food','workouts']};
   var hd=document.querySelector('header.top');
   if(hd)document.documentElement.style.setProperty('--hh',hd.offsetHeight+'px');
-  document.querySelectorAll('#topblocks [data-v]').forEach(function(x){x.classList.toggle('on',(TOPMAP[x.dataset.v]||[]).indexOf(route.view)>=0);});
+  var rv=route.view,isProp=rv==='property'||rv==='all'||rv==='sale'||(rv.indexOf('cat:')===0&&rv!=='cat:home');
+  document.querySelectorAll('#topblocks [data-v]').forEach(function(x){
+    var k=x.dataset.v;
+    x.classList.toggle('on',k==='property'?isProp:(TOPMAP[k]||[]).indexOf(rv)>=0);
+  });
   navSections().forEach(function(g){
     h+='<div class="navgroup"><h4>'+g.title+'</h4>'
       +g.items.map(function(x){return nv(x.v,x.label,x.n,x.icon);}).join('')
@@ -1984,6 +1992,7 @@ function soldHTML(){
   return h;
 }
 function renderMain(){
+  applyCustomCats();
   if(migrateBuy())touch();
   saveUi();
   var m=document.getElementById('main'),h='',v=route.view;
@@ -2060,9 +2069,15 @@ function renderMain(){
           +(x.n?'<span class="n mono">'+x.n+'</span>':'')+'</button>';
       }).join('')+'</div>';
     });
-  }else if(v==='all'||v.indexOf('cat:')===0){
-    var cat=v==='all'?null:v.slice(4);
-    var inCat=function(i){return notInbox(i)&&(!cat||i.cat===cat);};
+  }else if(v==='property'||v==='all'||v.indexOf('cat:')===0){
+    var cat;
+    if(v==='cat:home')cat='home';
+    else{
+      if(v.indexOf('cat:')===0)propTab=v.slice(4);else if(v==='all')propTab='all';
+      if(propTab!=='all'&&!CATS[propTab])propTab='all';
+      cat=propTab==='all'?null:propTab;
+    }
+    var inCat=function(i){return notInbox(i)&&(cat?i.cat===cat:i.cat!=='home');};
     var onSaleC=state.items.filter(function(i){return i.status==='sale'&&inCat(i);});
     var archC=state.items.filter(function(i){return i.status==='archive'&&inCat(i);});
     var list=(propStatus==='archive'?archC:state.items.filter(visible).filter(inCat)).filter(matches);
@@ -2072,14 +2087,25 @@ function renderMain(){
       h=title(CATS.home.icon+' '+CATS.home.label,homes.length)
         +'<div class="addrow" style="margin:0 0 12px"><button class="btn plusbtn" data-a="new" data-cat="home" title="Добавить жильё" aria-label="Добавить жильё">＋</button></div>'
         +gridHTML(homes,'Жильё пока не добавлено — нажмите «＋».');
-    }else
-    h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Всё имущество',list.length)
-      +objToolbar(true)
+    }else{
+    var kindTabs='<div class="seg"><button data-a="prop-tab" data-v="all"'+(!cat?' class="on"':'')+'>Все</button>'
+      +Object.keys(CATS).filter(function(c){return c!=='home';}).map(function(c){
+          var n=state.items.filter(function(i){return visible(i)&&notInbox(i)&&i.cat===c;}).length;
+          return '<button data-a="prop-tab" data-v="'+c+'"'+(cat===c?' class="on"':'')+'>'+CATS[c].icon+' '+esc(CATS[c].label)+(n?' · '+n:'')+'</button>';
+        }).join('')
+      +'<button data-a="kind-open" title="Новый вид имущества">＋ Вид</button></div>'
+      +(addingKind?'<div class="addrow" style="margin:0 0 12px"><input type="text" id="kind-icon" placeholder="🙂" style="flex:none;width:56px;text-align:center" maxlength="4">'
+        +'<input type="text" id="kind-name" placeholder="Название вида, например «Инструменты»"><button class="btn" data-a="kind-add">Создать</button></div>':'')
+      +(cat&&state.customCats&&state.customCats.some(function(c){return c.id===cat;})
+        ?'<div class="addrow" style="margin:0 0 12px"><button class="btn ghost" data-a="kind-del" data-v="'+cat+'">Удалить вид «'+esc(CATS[cat].label)+'»</button></div>':'');
+    h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'📦 Имущество',list.length)
+      +objToolbar(true)+kindTabs
       +'<div class="seg"><button data-a="prop-status" data-v="active"'+(propStatus==='active'?' class="on"':'')+'>Активные</button>'
       +'<button data-a="prop-status" data-v="archive"'+(propStatus==='archive'?' class="on"':'')+'>🗄 Архив'+(archC.length?' · '+archC.length:'')+'</button>'
       +'<button data-a="prop-sale"'+(showSale?' class="on"':'')+'>💰 На продаже'+(onSaleC.length?' · '+onSaleC.length:'')+'</button></div>'
       +(showSale?'<div class="groupblock"><h3>💰 На продаже</h3>'+gridHTML(onSaleC,'Здесь ничего не продаётся. Отметьте объект «На продажу» в его карточке.')+'</div>':'')
       +gridHTML(list,query?'Ничего не нашлось по запросу «'+esc(query)+'»':(propStatus==='archive'?'В архиве пусто.':'Здесь пока пусто. Добавьте первый кнопкой <b>«+ Объект»</b> выше.'));
+    }
   }else if(v==='sale'||v==='archive'){
     var list2=state.items.filter(function(i){return i.status===v;}).filter(matches);
     h=title(v==='sale'?'💰 На продажу':'🗄 Архив',list2.length)
@@ -2653,6 +2679,8 @@ function plusRow(view){
   var on=!!addOpen[view];
   return '<div class="addrow" style="margin:0 0 12px"><button class="btn plusbtn'+(on?' ghost':'')+'" data-a="add-toggle" data-v="'+view+'" title="Добавить" aria-label="Добавить">'+(on?'✕':'＋')+'</button></div>';
 }
+/* свои виды имущества: хранятся в данных и подмешиваются в справочник видов */
+function applyCustomCats(){(state.customCats||[]).forEach(function(c){if(c&&c.id&&!CATS[c.id])CATS[c.id]={label:c.label,icon:c.icon||'📦'};});}
 function groupName(id){var n='';(state.taskGroups||[]).forEach(function(g){if(g.id===id)n=g.name;});return n;}
 function taskInTab(it,t,tab){
   if(tab==='all')return true;
@@ -4710,6 +4738,30 @@ function onClick(e){
   }
   else if(a==='w-day'){diaryDay=b.dataset.v;route.view='workouts';renderNav();renderMain();}
   else if(a==='food-day'){diaryDay=b.dataset.v;route.view='food';renderNav();renderMain();}
+  else if(a==='prop-tab'){propTab=b.dataset.v;if(route.view!=='property'&&route.view.indexOf('cat:')!==0)route.view='property';renderNav();renderMain();}
+  else if(a==='kind-open'){addingKind=!addingKind;if(addingKind)refocus='kind-name';renderMain();}
+  else if(a==='kind-add'){
+    var kn=document.getElementById('kind-name'),kname=kn?kn.value.trim():'';
+    if(!kname){if(kn)kn.focus();return;}
+    var ki=document.getElementById('kind-icon'),kicon=(ki&&ki.value.trim())||'📦';
+    markUndo();
+    state.customCats=state.customCats||[];
+    var kid='u'+uid();
+    state.customCats.push({id:kid,label:kname,icon:kicon});
+    CATS[kid]={label:kname,icon:kicon};
+    propTab=kid;addingKind=false;
+    if(route.view.indexOf('cat:')===0)route.view='property';
+    touch();renderAll();
+  }
+  else if(a==='kind-del'){
+    var kd=b.dataset.v;
+    markUndo();
+    state.items.forEach(function(it){if(it.cat===kd)it.cat='stuff';});
+    state.customCats=(state.customCats||[]).filter(function(c){return c.id!==kd;});
+    delete CATS[kd];propTab='all';
+    if(route.view==='cat:'+kd)route.view='property';
+    touch();renderAll();toast('Вид удалён, вещи перенесены в «Вещи»','Вернуть');
+  }
   else if(a==='prop-status'){propStatus=b.dataset.v;renderMain();}
   else if(a==='prop-sale'){showSale=!showSale;renderMain();}
   else if(a==='food-tab'){foodTab=b.dataset.v;renderMain();}
@@ -5046,7 +5098,7 @@ function onClick(e){
   }
   else if(a==='open'){e.stopPropagation();route.item=id;confirmDel=false;editingInstr={};renderDetail();}
   else if(a==='close'){closeDetail();}
-  else if(a==='new'){openModal(b.dataset.cat||(String(route.view).indexOf('cat:')===0?route.view.slice(4):''));}
+  else if(a==='new'){openModal(b.dataset.cat||(String(route.view).indexOf('cat:')===0?route.view.slice(4):(route.view==='property'?(propTab!=='all'?propTab:'stuff'):'')));}
   else if(a==='modal-close'){importLists=null;evImport=null;closeModal();}
   else if(a==='imp-run'){runImportTasks();}
   else if(a==='ev-run'){runImportEvents();}
@@ -5911,7 +5963,7 @@ function restoreUi(){
   try{
     var u=JSON.parse(localStorage.getItem(UI_KEY)||'null');
     if(!u||typeof u.view!=='string')return;
-    var ok=u.view==='home'||u.view==='cal'||u.view==='notes'||u.view==='diaries'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
+    var ok=u.view==='home'||u.view==='cal'||u.view==='notes'||u.view==='diaries'||u.view==='property'||navSections().some(function(g){return g.items.some(function(x){return x.v===u.view;});});
     if(ok)route.view=u.view;
     if(u.foodTab==='dishes'||u.foodTab==='diary')foodTab=u.foodTab;
     if(typeof u.taskTab==='string')taskTab=u.taskTab;
@@ -5945,6 +5997,7 @@ function init(){
   if(!state.exercises)state.exercises=[];
   if(!state.gyms)state.gyms=[];
   if(!state.taskGroups)state.taskGroups=[];
+  if(!state.customCats)state.customCats=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.addEventListener('click',onClick);
   document.addEventListener('pointerdown',planDown);
