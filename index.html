@@ -2043,6 +2043,13 @@ function renderMain(){
     var onSaleC=state.items.filter(function(i){return i.status==='sale'&&inCat(i);});
     var archC=state.items.filter(function(i){return i.status==='archive'&&inCat(i);});
     var list=(propStatus==='archive'?archC:state.items.filter(visible).filter(inCat)).filter(matches);
+    if(cat==='home'){
+      /* жильё — не имущество: без продажи, архива и поиска, добавленное сразу на странице */
+      var homes=state.items.filter(visible).filter(inCat);
+      h=title(CATS.home.icon+' '+CATS.home.label,homes.length)
+        +'<div class="addrow" style="margin:0 0 12px"><button class="btn plusbtn" data-a="new" data-cat="home" title="Добавить жильё" aria-label="Добавить жильё">＋</button></div>'
+        +gridHTML(homes,'Жильё пока не добавлено — нажмите «＋».');
+    }else
     h=title(cat?CATS[cat].icon+' '+CATS[cat].label:'Всё имущество',list.length)
       +objToolbar(true)
       +'<div class="seg"><button data-a="prop-status" data-v="active"'+(propStatus==='active'?' class="on"':'')+'>Активные</button>'
@@ -3131,13 +3138,13 @@ function openViewer(itemId,photoId){
 function closeViewer(){var v=document.getElementById('pviewer');v.hidden=true;v.innerHTML='';}
 
 /* ══════════ модалка нового объекта ══════════ */
-function openModal(){
+function openModal(cat){
   var m=document.getElementById('modal');
   m.hidden=false;
   var h='<div class="modal-box"><h3>Новый объект</h3>'
     +'<label for="ni-name">Название</label><input id="ni-name" type="text" placeholder="Например: холодильник, дача, велосипед…">'
     +'<label for="ni-cat">Раздел</label><select id="ni-cat">';
-  Object.keys(CATS).forEach(function(c){h+='<option value="'+c+'">'+CATS[c].icon+' '+CATS[c].label+'</option>';});
+  Object.keys(CATS).forEach(function(c){h+='<option value="'+c+'"'+(c===cat?' selected':'')+'>'+CATS[c].icon+' '+CATS[c].label+'</option>';});
   h+='</select><div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
     +'<button class="btn" data-a="create">Создать</button></div></div>';
   m.innerHTML=h;
@@ -5016,7 +5023,7 @@ function onClick(e){
   }
   else if(a==='open'){e.stopPropagation();route.item=id;confirmDel=false;editingInstr={};renderDetail();}
   else if(a==='close'){closeDetail();}
-  else if(a==='new'){openModal();}
+  else if(a==='new'){openModal(b.dataset.cat||(String(route.view).indexOf('cat:')===0?route.view.slice(4):''));}
   else if(a==='modal-close'){importLists=null;evImport=null;closeModal();}
   else if(a==='imp-run'){runImportTasks();}
   else if(a==='ev-run'){runImportEvents();}
