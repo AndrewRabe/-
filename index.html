@@ -1646,7 +1646,7 @@ function findMeal(slot,id){
   return l[0]||null;
 }
 /* количество блюда (необязательно, «2 шт», «200 г») хранится параллельно в m.q */
-function dishText(m,i){var q=(m.q||[])[i];return m.dishes[i]+(q?' ('+q+')':'');}
+function dishText(m,i){var q=(m.q||[])[i],f=(m.f||[])[i];return m.dishes[i]+(q?' ('+q+')':'')+(f?' · '+f:'');}
 function mealsOn(ds){return (state.meals||[]).filter(function(m){return m.date===ds;});}
 /* приёмы пищи дня по порядку времени, с короткой строкой блюд */
 function mealsBrief(ds){
@@ -2168,7 +2168,7 @@ function renderMain(){
     var foodTitle=title('🍽 Питание',day.reduce(function(a,m){return a+(m.dishes||[]).length;},0))
       +'<div class="seg"><button data-a="food-tab" data-v="diary"'+(foodTab==='diary'?' class="on"':'')+'>Дневник</button>'
       +'<button data-a="food-tab" data-v="dishes"'+(foodTab==='dishes'?' class="on"':'')+'>Мои блюда'+((state.dishes||[]).length?' · '+state.dishes.length:'')+'</button></div>';
-    h=foodTitle+dayNav()+bookList('dishes','dishbook');
+    h=foodTitle+dayNav()+bookList('dishes','dishbook')+bookList('sources','srcbook')+bookList('eatplaces','eatbook');
     /* показываем только то, что было: любого приёма может не быть, перекусов — несколько.
        Пустой блок появляется по кнопке «＋» и исчезает после добавления блюда */
     if(openSlots._d!==diaryDay)openSlots={_d:diaryDay};
@@ -2192,6 +2192,7 @@ function renderMain(){
         h+='<div class="groupblock slot" data-a="meal-open" data-id="'+m.id+'" style="cursor:pointer" title="Нажмите, чтобы изменить">'
           +'<h4>'+SLOTS[sl]+(m.time?'<span class="wish-meta" style="margin-left:8px;text-transform:none">'+esc(m.time)+(m.end?'–'+esc(m.end):'')+'</span>':'')
           +'<span class="wish-meta" style="margin-left:auto;text-transform:none">изменить</span></h4>'
+          +(m.place?'<div class="wish-meta" style="margin-bottom:2px">📍 '+esc(m.place)+'</div>':'')
           +(ds2.length?'<div>'+ds2.map(function(x,i){return esc(dishText(m,i));}).join(', ')+'</div>':'<p class="hint" style="margin:0">Пока ничего не записано.</p>')
           +(m.note?'<div class="wish-meta" style="margin-top:4px">'+esc(m.note)+'</div>':'')
           +'</div>';
@@ -2201,16 +2202,19 @@ function renderMain(){
         +'<input type="time" class="duein" id="mtime-'+key+'" value="'+esc(m?(m.time||''):defaultTime(sl))+'" data-f="meal-time" data-v="'+sl+'"'+idA+' title="Начало" style="margin-left:8px">'
         +'<span class="wish-meta" style="margin:0 4px">–</span>'
         +'<input type="time" class="duein" id="mend-'+key+'" value="'+esc(m?(m.end||''):'')+'" data-f="meal-end" data-v="'+sl+'"'+idA+' title="Окончание (необязательно)">'
-        +'</h4>';
+        +'</h4>'
+        +(m?'<div class="addrow" style="margin:0 0 8px"><input type="text" data-book="eatbook" autocomplete="off" value="'+esc(m.place||'')+'" data-f="meal-place" data-id="'+m.id+'" placeholder="📍 Где ели: дома, работа, кафе…"></div>':'');
       h+=ds2.length
         ? ds2.map(function(name,i){
             return '<div class="dish"><span class="t">'+esc(name)+'</span>'
               +'<input type="text" class="duein" value="'+esc((m.q||[])[i]||'')+'" data-f="dish-q" data-id="'+m.id+'" data-i="'+i+'" placeholder="кол-во" title="Сколько (необязательно), например 2 шт" style="width:84px">'
+              +'<input type="text" class="duein" data-book="srcbook" autocomplete="off" value="'+esc((m.f||[])[i]||'')+'" data-f="dish-src" data-id="'+m.id+'" data-i="'+i+'" placeholder="откуда" title="Откуда блюдо: домашнее, покупное, магазин…" style="width:104px">'
               +'<button class="x" title="Убрать" data-a="del-dish" data-v="'+sl+'"'+idA+' data-i="'+i+'">✕</button></div>';
           }).join('')
         : '<p class="hint" style="margin:0 0 6px">Пока ничего не записано.</p>';
       h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+key+'" placeholder="Что было… (несколько — через «;»)" autocomplete="off">'
         +'<input type="text" id="dq-'+key+'" placeholder="Кол-во" title="Сколько (необязательно), например 2 шт" style="flex:none;width:84px">'
+        +'<input type="text" id="ds-'+key+'" data-book="srcbook" autocomplete="off" placeholder="Откуда" title="Откуда блюдо (необязательно)" style="flex:none;width:104px">'
         +'<button class="btn ghost" data-a="add-dish" data-v="'+sl+'"'+idA+'>Добавить</button></div>';
       if(m)h+='<div class="addrow" style="margin-top:8px"><input type="text" value="'+esc(m.note||'')+'" data-f="meal-note" data-v="'+sl+'"'+idA+' placeholder="Заметка к приёму пищи (необязательно)"></div>'
         +'<div class="addrow"><button class="btn ghost" data-a="meal-close">Готово</button></div>';
@@ -2223,7 +2227,15 @@ function renderMain(){
               +'<span class="wish-meta">'+plural(x.n||0,['раз','раза','раз'])+'</span>'
               +'<button class="x" title="Забыть блюдо" data-a="del-book" data-v="dishes" data-id="'+x.id+'">✕</button></div>';
           }).join('')+'</div>'
-        : '<div class="empty">Блюда появятся здесь, когда вы начнёте записывать питание.</div>');
+        : '<div class="empty">Блюда появятся здесь, когда вы начнёте записывать питание.</div>')
+      +[['eatplaces','Где ем'],['sources','Откуда блюда']].map(function(bk){
+          var arr=bookTop(bk[0],200);
+          return arr.length?'<div class="groupblock"><h3>'+bk[1]+'</h3>'+arr.map(function(x){
+            return '<div class="dish"><span class="t">'+esc(x.name)+'</span>'
+              +'<span class="wish-meta">'+plural(x.n||0,['раз','раза','раз'])+'</span>'
+              +'<button class="x" title="Забыть" data-a="del-book" data-v="'+bk[0]+'" data-id="'+x.id+'">✕</button></div>';
+          }).join('')+'</div>':'';
+        }).join('');
   }else if(v==='workouts'){
     var lastW=(state.workouts||[]).slice().sort(function(a,b){return a.date<b.date?1:-1;}).filter(function(w){return w.place;})[0];
     var lastPlace={place:lastW?lastW.place:'home',gym:lastW&&lastW.place==='gym'?(lastW.gym||''):''};
@@ -3179,7 +3191,7 @@ function mealDraftList(){
   var l=document.getElementById('mm-list');
   if(!l)return;
   l.innerHTML=mealDraft.dishes.map(function(d,i){
-    return '<span class="mm-chip">'+esc(d.n)+(d.q?' <span class="wish-meta">('+esc(d.q)+')</span>':'')
+    return '<span class="mm-chip">'+esc(d.n)+((d.q||d.s)?' <span class="wish-meta">('+esc([d.q,d.s].filter(Boolean).join(', '))+')</span>':'')
       +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button></span>';
   }).join('')||'<span class="wish-meta">Блюда пока не добавлены</span>';
 }
@@ -3194,9 +3206,11 @@ function openMealModal(slot){
     +'<div class="addrow" style="margin-top:10px;align-items:center"><label style="margin:0">Время</label>'
     +'<input type="time" id="mm-time" value="'+esc(defaultTime(slot))+'" style="width:auto"><span class="wish-meta">–</span>'
     +'<input type="time" id="mm-end" style="width:auto" title="Окончание (необязательно)"></div>'
+    +'<label for="mm-place">Где</label><input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)">'
     +'<label>Что ели</label>'
-    +'<div class="addrow" style="margin-top:0"><input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Блюдо (несколько — через «;»)" style="width:auto;flex:1 1 150px">'
-    +'<input type="text" id="mm-q" placeholder="Кол-во" style="width:84px;flex:none">'
+    +'<div class="addrow" style="margin-top:0"><input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Блюдо (несколько — через «;»)" style="width:auto;flex:1 1 140px">'
+    +'<input type="text" id="mm-q" placeholder="Кол-во" style="width:72px;flex:none">'
+    +'<input type="text" id="mm-src" data-book="srcbook" autocomplete="off" placeholder="Откуда" title="Домашнее, покупное, магазин…" style="width:96px;flex:none">'
     +'<button class="btn ghost" data-a="mm-add-dish">＋</button></div>'
     +'<div id="mm-list" class="mm-list"></div>'
     +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
@@ -3206,12 +3220,12 @@ function openMealModal(slot){
 }
 /* из поля ввода — в черновик (несколько блюд через «;») */
 function mealDraftTake(){
-  var di=document.getElementById('mm-dish'),qi=document.getElementById('mm-q');
+  var di=document.getElementById('mm-dish'),qi=document.getElementById('mm-q'),si=document.getElementById('mm-src');
   var names=String(di?di.value:'').split(/[;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
   if(!names.length)return false;
-  var q=(qi&&names.length===1)?qi.value.trim():'';
-  names.forEach(function(n){mealDraft.dishes.push({n:n,q:q});});
-  if(di)di.value='';if(qi)qi.value='';
+  var q=(qi&&names.length===1)?qi.value.trim():'',src=si?si.value.trim():'';
+  names.forEach(function(n){mealDraft.dishes.push({n:n,q:q,s:src});});
+  if(di)di.value='';if(qi)qi.value='';if(si)si.value='';
   mealDraftList();
   return true;
 }
@@ -3936,7 +3950,7 @@ function mergeState(data){
       state.birthdays.push({id:uid(),name:b.name,date:b.date,noAge:!!b.noAge});added.bd++;
     });
 
-    ['dishes','exercises'].forEach(function(bk){
+    ['dishes','exercises','sources','eatplaces'].forEach(function(bk){
       var haveB={};
       (state[bk]||[]).forEach(function(x){haveB[x.name.toLowerCase()]=x;});
       (data[bk]||[]).forEach(function(x){
@@ -3955,14 +3969,15 @@ function mergeState(data){
       if(!m||!m.date||!SLOTS[m.slot])return;
       var cur=haveM[mealKey(m)];
       if(!cur){
-        cur={id:uid(),date:m.date,slot:m.slot,time:m.time||'',end:m.end||'',dishes:[],note:m.note||''};
+        cur={id:uid(),date:m.date,slot:m.slot,time:m.time||'',end:m.end||'',dishes:[],place:m.place||'',note:m.note||''};
         state.meals=state.meals||[];state.meals.push(cur);haveM[mealKey(m)]=cur;
       }
       (m.dishes||[]).forEach(function(d){
         if(d&&cur.dishes.indexOf(d)<0){
           var mi2=(m.dishes||[]).indexOf(d);
           cur.q=cur.q||[];while(cur.q.length<cur.dishes.length)cur.q.push('');
-          cur.dishes.push(d);cur.q.push((m.q||[])[mi2]||'');added.meals++;
+          cur.f=cur.f||[];while(cur.f.length<cur.dishes.length)cur.f.push('');
+          cur.dishes.push(d);cur.q.push((m.q||[])[mi2]||'');cur.f.push((m.f||[])[mi2]||'');added.meals++;
         }
       });
     });
@@ -4682,8 +4697,10 @@ function onClick(e){
     if(!mealDraft.dishes.length){var md1=document.getElementById('mm-dish');if(md1)md1.focus();toast('Добавьте хотя бы одно блюдо');return;}
     var mtm=document.getElementById('mm-time'),mnd=document.getElementById('mm-end');
     markUndo();
-    var nm={id:uid(),date:diaryDay,slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],note:''};
-    mealDraft.dishes.forEach(function(d){nm.dishes.push(bookAdd('dishes',d.n));nm.q.push(d.q||'');});
+    var mpi=document.getElementById('mm-place'),mplace=mpi?mpi.value.trim():'';
+    var nm={id:uid(),date:diaryDay,slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],f:[],place:mplace,note:''};
+    if(mplace)bookAdd('eatplaces',mplace);
+    mealDraft.dishes.forEach(function(d){nm.dishes.push(bookAdd('dishes',d.n));nm.q.push(d.q||'');nm.f.push(d.s||'');if(d.s)bookAdd('sources',d.s);});
     state.meals=state.meals||[];state.meals.push(nm);
     mealDraft=null;touch();closeModal();renderAll();
     toast('Приём пищи добавлен','Отменить');
@@ -4709,8 +4726,11 @@ function onClick(e){
     if(!mm){var tin=document.getElementById('mtime-'+slot);mm={id:uid(),date:diaryDay,slot:slot,time:(tin&&tin.value)||defaultTime(slot),end:(document.getElementById('mend-'+slot)||{}).value||'',dishes:[],note:''};state.meals.push(mm);delete openSlots[slot];openMeal=mm.id;}
     mm.dishes=mm.dishes||[];
     mm.q=mm.q||[];while(mm.q.length<mm.dishes.length)mm.q.push('');
+    mm.f=mm.f||[];while(mm.f.length<mm.dishes.length)mm.f.push('');
     var qin=document.getElementById('dq-'+(b.dataset.id||slot)),qv=(qin&&names.length===1)?qin.value.trim():'';
-    names.forEach(function(n1){mm.dishes.push(bookAdd('dishes',n1));mm.q.push(qv);});
+    var sin=document.getElementById('ds-'+(b.dataset.id||slot)),sv=sin?sin.value.trim():'';
+    if(sv)bookAdd('sources',sv);
+    names.forEach(function(n1){mm.dishes.push(bookAdd('dishes',n1));mm.q.push(qv);mm.f.push(sv);});
     refocus=a==='add-dish'?('dish-'+(mm.id)):null;
     touch();renderAll();
   }
@@ -4719,7 +4739,7 @@ function onClick(e){
     var md=findMeal(msl,b.dataset.id);
     if(!md)return;
     markUndo();
-    md.dishes.splice(mi,1);if(md.q)md.q.splice(mi,1);
+    md.dishes.splice(mi,1);if(md.q)md.q.splice(mi,1);if(md.f)md.f.splice(mi,1);
     if(!md.dishes.length&&!md.note)state.meals=state.meals.filter(function(x){return x.id!==md.id;});
     touch();renderAll();toast('Убрано','Вернуть');
   }
@@ -5610,6 +5630,16 @@ function onChange(e){
     var lbl=document.querySelector('[data-plan-room="'+t.dataset.sub+'"] .nm');
     if(lbl)lbl.textContent=t.value||'Комната';
     touch();return;
+  }
+  if(f==='meal-place'){
+    var mpl=findMeal('',t.dataset.id);
+    if(mpl){mpl.place=t.value.trim();if(mpl.place)bookAdd('eatplaces',mpl.place);touch();}
+    return;
+  }
+  if(f==='dish-src'){
+    var mds=findMeal('',t.dataset.id);
+    if(mds){mds.f=mds.f||[];while(mds.f.length<mds.dishes.length)mds.f.push('');mds.f[t.dataset.i]=t.value.trim();if(t.value.trim())bookAdd('sources',t.value.trim());touch();}
+    return;
   }
   if(f==='dish-q'){
     var mq=findMeal('',t.dataset.id);
