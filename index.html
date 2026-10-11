@@ -489,6 +489,14 @@ var STATE_PATH='data/state.json';
 var YD_API='https://cloud-api.yandex.net/v1/disk';
 var YD_STATE='app:/state.json';
 
+/* порядок задач: сначала со сроком по возрастанию, при равном сроке (и у задач без срока) — новые сверху;
+   id начинаются со времени создания, поэтому сравнение id даёт порядок создания */
+function cmpTask(a,b){
+  var da=a.due||'~',db=b.due||'~';
+  if(da!==db)return da<db?-1:1;
+  var ia=String(a.id||''),ib=String(b.id||'');
+  return ia===ib?0:(ia<ib?1:-1);
+}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function plural(n,f){var m10=n%10,m100=n%100;var i=(m10===1&&m100!==11)?0:(m10>=2&&m10<=4&&(m100<12||m100>14))?1:2;return n+' '+f[i];}
@@ -2072,7 +2080,7 @@ function renderMain(){
     withTasks.forEach(function(it){
       var list=(it.tasks||[]).filter(function(t){return !t.done&&isGeneral(t)&&taskInTab(it,t,taskTab);});
       if(!list.length)return;any=true;
-      list.sort(function(a,b){return (a.due||'~')<(b.due||'~')?-1:1;});
+      list.sort(cmpTask);
       var opened=list.length;
       var head=isInbox(it)?'📥 '+esc(it.name)
         :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
@@ -2093,7 +2101,7 @@ function renderMain(){
       if(!t.done)pays.push({it:it,t:t,sum:paySum(t)});
       (t.hist||[]).forEach(function(d){paidLog.push({d:d,text:t.text,sum:paySum(t)});});
     });});
-    pays.sort(function(a,b){return (a.t.due||'~')<(b.t.due||'~')?-1:(a.t.due||'~')>(b.t.due||'~')?1:0;});
+    pays.sort(function(a,b){return cmpTask(a.t,b.t);});
     var dNow=new Date(),monthEnd=dNow.getFullYear()+'-'+pad2(dNow.getMonth()+1)+'-'+pad2(new Date(dNow.getFullYear(),dNow.getMonth()+1,0).getDate());
     var in30=shiftDay(td,30),sMonth=0,s30=0;
     pays.forEach(function(x){
@@ -2122,7 +2130,7 @@ function renderMain(){
     doneGroups.forEach(function(it){doneAll+=(it.tasks||[]).filter(function(t){return t.done;}).length;});
     h=title('✔ Выполненные',doneAll);
     doneGroups.forEach(function(it){
-      var dl=(it.tasks||[]).filter(function(t){return t.done;});
+      var dl=(it.tasks||[]).filter(function(t){return t.done;}).reverse();
       var dhead=isInbox(it)?'📥 '+esc(it.name)
         :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
       h+='<div class="groupblock"><h3>'+dhead+'<span class="wish-meta" style="margin-left:auto">'+dl.length+'</span>'
@@ -2419,7 +2427,7 @@ function renderMain(){
     state.items.filter(visible).forEach(function(it){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.go)gl.push({it:it,t:t});});
     });
-    gl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    gl.sort(function(x,y){return cmpTask(x.t,y.t);});
     h=title('🧭 Куда сходить',gl.length)+plusRow('go')+(addOpen.go?newTaskForm('go'):'')
       +(gl.length?'<div class="groupblock">'+gl.map(function(e){
           return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
@@ -2430,7 +2438,7 @@ function renderMain(){
     state.items.filter(visible).forEach(function(it){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.sell)tl.push({it:it,t:t});});
     });
-    tl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    tl.sort(function(x,y){return cmpTask(x.t,y.t);});
     var cand=state.items.filter(visible).filter(notInbox).filter(function(i){return i.status!=='sale';});
     h=title('📤 Выложить на продажу',tl.length)+plusRow('tolist')
       +(addOpen.tolist?newTaskForm('sell'):'')
@@ -2514,7 +2522,7 @@ function renderMain(){
     state.items.filter(visible).forEach(function(it){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.buy)bl2.push({it:it,t:t});});
     });
-    bl2.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    bl2.sort(function(x,y){return cmpTask(x.t,y.t);});
     var wishOpenN=(state.wishes||[]).filter(function(w){return w.status!=='bought';}).length;
     h=title('🛒 Покупки',bl2.length+wishOpenN)
       +secRow('Список покупок','buy',bl2.length)
@@ -2530,7 +2538,7 @@ function renderMain(){
     state.items.filter(visible).forEach(function(it){
       (it.tasks||[]).forEach(function(t){if(!t.done&&t.improve)pl.push({it:it,t:t});});
     });
-    pl.sort(function(x,y){return (x.t.due||'~')<(y.t.due||'~')?-1:(x.t.due||'~')>(y.t.due||'~')?1:0;});
+    pl.sort(function(x,y){return cmpTask(x.t,y.t);});
     h=title('🛠 Планы',pl.length)+plusRow('improve')+(addOpen.improve?newTaskForm('improve'):'')
       +(pl.length?'<div class="groupblock">'+pl.map(function(e){
           return rowHTML(e.it.id,'tasks',e.t,true,false,isInbox(e.it),false,isInbox(e.it)?'':e.it.name);
@@ -3000,7 +3008,7 @@ function renderDetail(){
     +'<p class="hint">Название параметра и значение вводите через « — », например: «Гарантия — до 03.2027».</p></section>';
 
   h+='<section class="d-sec"><h3>Задачи</h3>'
-    +(it.tasks||[]).map(function(t){return rowHTML(it.id,'tasks',t,true,true);}).join('')
+    +(it.tasks||[]).slice().reverse().map(function(t){return rowHTML(it.id,'tasks',t,true,true);}).join('')
     +'<div class="addrow"><input type="text" id="add-task" placeholder="Новая задача…">'
     +'<input type="date" id="add-task-due" title="Срок (необязательно)">'
     +'<input type="time" id="add-task-time" title="Время (необязательно)" style="width:96px">'
