@@ -288,6 +288,8 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
   border-radius:9px;padding:7px 12px;cursor:pointer;font-size:14px}
 .daynav button:hover{border-color:var(--accent)}
 .daynav .now{font-weight:600;font-size:15px;color:var(--ink)}
+.daynav .daypick{position:relative;cursor:pointer;border-bottom:1px dashed var(--muted);padding:2px 2px}
+.daynav .daypick:hover{color:var(--accent);border-color:var(--accent)}
 .slot h4{margin:0 0 8px;font-size:13px;color:var(--muted);letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;flex-wrap:wrap}
 .setrow{display:flex;align-items:center;gap:6px;margin:4px 0}
 .setrow input{flex:none;padding:5px 8px;min-width:0}
@@ -1634,10 +1636,10 @@ function shiftDay(ds,n){
 }
 function dayNav(){
   return '<div class="daynav"><button data-a="diary-day" data-v="-1" title="Предыдущий день">‹</button>'
-    +'<span class="now">'+fmtDayTitle(diaryDay)+'</span>'
+    +'<span class="now daypick" data-a="due-pick" title="Нажмите, чтобы выбрать дату">'+fmtDayTitle(diaryDay)
+    +'<input type="date" class="duepick" tabindex="-1" value="'+esc(diaryDay)+'" data-f="diary-date"></span>'
     +'<button data-a="diary-day" data-v="1" title="Следующий день">›</button>'
-    +'<button data-a="diary-day" data-v="0">Сегодня</button>'
-    +'<input type="date" value="'+esc(diaryDay)+'" data-f="diary-date"></div>';
+    +'<button data-a="diary-day" data-v="0">Сегодня</button></div>';
 }
 /* перекусов за день может быть несколько — различаем по времени */
 function mealKey(m){return m.date+'|'+m.slot+'|'+(m.time||'');}
