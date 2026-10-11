@@ -401,6 +401,8 @@ form.ntform{}
 .mm-list{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
 .mm-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border-radius:999px;padding:3px 6px 3px 12px;font-size:13.5px}
 .mm-chip .x{padding:0 4px}
+.inl{flex:1 1 140px;min-width:0;background:transparent;border-color:transparent;padding:3px 6px}
+.inl:hover,.inl:focus{border-color:var(--line);background:var(--surface)}
 button.plusbtn{font-size:18px;line-height:1;padding:6px 14px}
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
@@ -2012,12 +2014,22 @@ function renderMain(){
       +(due.length+evT.length+bdSoon.length
          ?'<span class="wish-meta" style="margin-left:auto">'+(due.length+evT.length+bdSoon.length)+'</span>':'')
       +'</h3>';
+    /* всё, что назначено на сегодня, правится прямо здесь: текст, время, дата, удаление */
     evT.slice().sort(function(a,b){return (a.time||'')<(b.time||'')?-1:1;}).forEach(function(ev){
-      h+='<div class="row"><span class="ev-time">'+(ev.time?esc(ev.time):'📅')+'</span>'
-        +'<span class="t">'+esc(ev.title)+'</span></div>';
+      h+='<div class="row"><span class="ev-time">📅</span>'
+        +'<input type="time" class="duein" value="'+esc(ev.time||'')+'" data-f="ev-e-time" data-sub="'+ev.id+'" title="Время" style="width:96px">'
+        +'<input type="text" class="inl" value="'+esc(ev.title)+'" data-f="ev-e-title" data-sub="'+ev.id+'" aria-label="Название">'
+        +(ev.repeat?'<span class="rep">'+REPEATS[ev.repeat]+'</span>'
+                   :'<input type="date" class="duein" value="'+esc(ev.date)+'" data-f="ev-e-date" data-sub="'+ev.id+'" title="Перенести на другую дату">')
+        +'<button class="x" title="'+(ev.repeat?'Удалить все повторы':'Удалить')+'" data-a="del-event" data-sub="'+ev.id+'">✕</button></div>';
     });
     due.slice(0,7).forEach(function(e){
-      h+=rowHTML(e.it.id,'tasks',e.t,false);
+      var t=e.t;
+      h+='<div class="row'+(t.due<tod?' over':'')+'"><input type="checkbox" data-a="tgl" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+t.id+'">'
+        +'<input type="time" class="duein" value="'+esc(t.time||'')+'" data-f="task-time" data-id="'+e.it.id+'" data-sub="'+t.id+'" title="Время" style="width:96px">'
+        +'<input type="text" class="inl" value="'+esc(t.text)+'" data-f="task-text" data-id="'+e.it.id+'" data-sub="'+t.id+'" aria-label="Задача">'
+        +'<input type="date" class="duein" value="'+esc(t.due||'')+'" data-f="task-due" data-id="'+e.it.id+'" data-sub="'+t.id+'" title="Срок — можно перенести">'
+        +'<button class="x" title="Удалить" data-a="del-sub" data-id="'+e.it.id+'" data-kind="tasks" data-sub="'+t.id+'">✕</button></div>';
     });
     if(due.length>7)
       h+='<div class="row"><span class="t"><button data-a="go" data-v="tasks">…и ещё '+(due.length-7)+'</button></span></div>';
@@ -5796,6 +5808,16 @@ function onChange(e){
     touch();renderNav();renderMain();
     return;
   }
+  if(f==='ev-e-title'||f==='ev-e-time'||f==='ev-e-date'){
+    var eev=(state.events||[]).filter(function(x){return x.id===t.dataset.sub;})[0];
+    if(eev){
+      if(f==='ev-e-title'){if(t.value.trim())eev.title=t.value.trim();}
+      else if(f==='ev-e-time')eev.time=t.value;
+      else if(t.value)eev.date=t.value;
+      touch();renderNav();renderMain();
+    }
+    return;
+  }
   var it=find(t.dataset.id);if(!it)return;
   if(f==='name'){it.name=t.value.trim()||'Без названия';renderNav();renderMain();}
   else if(f==='notes'){it.notes=t.value;renderMain();}
@@ -5814,6 +5836,9 @@ function onChange(e){
   }
   else if(f==='instr-title'||f==='instr-text'){
     it.instructions.forEach(function(s){if(s.id===t.dataset.sub){if(f==='instr-title')s.title=t.value;else s.text=t.value;}});
+  }
+  else if(f==='task-text'){
+    (it.tasks||[]).forEach(function(x){if(x.id===t.dataset.sub&&t.value.trim())x.text=t.value.trim();});
   }
   else if(f==='task-due'){
     (it.tasks||[]).forEach(function(x){if(x.id===t.dataset.sub)x.due=t.value||'';});
