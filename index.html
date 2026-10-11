@@ -48,6 +48,7 @@ header.top{position:sticky;top:0;z-index:30;padding:8px 18px 6px;background:var(
 .topblocks button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .wordmark{font-family:'PT Serif',Georgia,serif;font-weight:700;font-size:19px;letter-spacing:.2px;white-space:nowrap;cursor:pointer}
 .wordmark .leaf{color:var(--accent)}
+.wordmark:hover{opacity:.8}
 #q{flex:1;max-width:340px;min-width:0}
 #chip{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:8px;padding:4px 6px}
 #chip:hover{background:var(--surface2)}
@@ -470,7 +471,6 @@ details.help li{margin-bottom:4px}
     <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
   </div>
   <nav class="topblocks" id="topblocks" aria-label="Основные блоки">
-    <button data-a="go" data-v="home">🏠 Главная</button>
     <button data-a="go" data-v="cal">📅 Календарь</button>
     <button data-a="go" data-v="cat:home">🏠 Жильё</button>
     <button data-a="go" data-v="property">📦 Имущество</button>
