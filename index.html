@@ -2163,13 +2163,12 @@ function renderMain(){
       if(d>=td&&d<=monthEnd)sMonth+=x.sum;
       if(d>=td&&d<=in30)s30+=x.sum;
     });
-    h=title('💳 Платежи',pays.length)
+    h=title('💳 Платежи',pays.length)+plusRow('pay')+(addOpen.pay?newTaskForm('pay'):'')
       +'<div class="stat-tiles"><div><b>'+fmtMoney(sMonth)+'</b><span>до конца месяца</span></div>'
-      +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>'
-      +plusRow('pay')+(addOpen.pay?newTaskForm('pay'):'');
+      +'<div><b>'+fmtMoney(s30)+'</b><span>ближайшие 30 дней</span></div></div>';
     if(!pays.length)h+='<div class="empty">Платежей пока нет. Нажмите «＋» и добавьте первый: аренда, интернет, страховка, кредит.</div>';
     else h+='<div class="groupblock">'+pays.map(function(x){
-      return rowHTML(x.it.id,'tasks',x.t,true,true,false,false,isInbox(x.it)?'':x.it.name);
+      return rowHTML(x.it.id,'tasks',x.t,true,false,isInbox(x.it),false,isInbox(x.it)?'':x.it.name);
     }).join('')+'</div>';
     if(paidLog.length){
       paidLog.sort(function(a,b){return a.d<b.d?1:a.d>b.d?-1:0;});
@@ -2178,20 +2177,15 @@ function renderMain(){
       }).join('')+'</div>';
     }
   }else if(v==='done'){
-    var doneAll=0;
-    var doneGroups=state.items.filter(visible).filter(function(it){return (it.tasks||[]).some(function(t){return t.done;});})
-      .sort(function(a,b){return (isInbox(b)?1:0)-(isInbox(a)?1:0);});
-    doneGroups.forEach(function(it){doneAll+=(it.tasks||[]).filter(function(t){return t.done;}).length;});
-    h=title('✔ Выполненные',doneAll);
-    doneGroups.forEach(function(it){
-      var dl=(it.tasks||[]).filter(function(t){return t.done;}).reverse();
-      var dhead=isInbox(it)?'📥 '+esc(it.name)
-        :CATS[catOf(it)].icon+' <button data-a="open" data-id="'+it.id+'">'+esc(it.name)+'</button>';
-      h+='<div class="groupblock"><h3>'+dhead+'<span class="wish-meta" style="margin-left:auto">'+dl.length+'</span>'
-        +'<button class="x" title="Удалить выполненные задачи этого списка" data-a="del-done" data-id="'+it.id+'">✕ очистить</button></h3>'
-        +dl.map(function(t){return rowHTML(it.id,'tasks',t,true,false,false);}).join('')+'</div>';
-    });
-    if(!doneGroups.length)h+='<div class="empty">Выполненных задач пока нет. Отметьте задачу галочкой — она переедет сюда.</div>';
+    var dn=[];
+    state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){if(t.done)dn.push({it:it,t:t});});});
+    dn.sort(function(x,y){return String(x.t.id)<String(y.t.id)?1:-1;});         /* новые сверху */
+    h=title('✔ Выполненные',dn.length)
+      +(dn.length?'<div class="addrow" style="margin:0 0 12px"><button class="btn ghost" data-a="del-done-all">Очистить выполненные</button></div>':'')
+      +(dn.length?'<div class="groupblock">'+dn.map(function(e){
+          return rowHTML(e.it.id,'tasks',e.t,true,false,false,false,isInbox(e.it)?'':e.it.name);
+        }).join('')+'</div>'
+        :'<div class="empty">Выполненных задач пока нет. Отметьте задачу галочкой — она переедет сюда.</div>');
   }else if(v==='notes'){
     var ns=(state.notes||[]).slice().reverse();          /* свежие сверху */
     h=title('📝 Заметки',ns.length)
@@ -5075,6 +5069,12 @@ function onClick(e){
     state.taskGroups=(state.taskGroups||[]).filter(function(g){return g.id!==gd;});
     state.items.forEach(function(it){(it.tasks||[]).forEach(function(t){if(t.g===gd)delete t.g;});});
     taskTab='all';touch();renderAll();toast('Группа удалена, задачи остались без группы','Вернуть');
+  }
+  else if(a==='del-done-all'){
+    markUndo();
+    var cnt=0;
+    state.items.forEach(function(it){var keep=(it.tasks||[]).filter(function(t){return !t.done;});cnt+=(it.tasks||[]).length-keep.length;it.tasks=keep;});
+    touch();renderAll();toast('Убрано выполненных: '+cnt,'Вернуть');
   }
   else if(a==='del-done'){
     var dIt=find(id);
