@@ -379,6 +379,17 @@ section.d-sec{background:var(--surface);border:1px solid var(--line);border-radi
 .due{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--surface2);color:var(--muted);flex:none;margin-top:2px;white-space:nowrap}
 .sechead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:20px 0 10px}
 .sechead h3{margin:0;font-size:17px}
+form.ntform{}
+.ntseg{margin:2px 0 10px}
+.ntdue{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.ntdue button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:3px 12px;font-size:13px}
+.ntdue button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ntdue button.more{border-style:dashed;color:var(--muted)}
+.ntdue input[type=date]{padding:3px 8px;font-size:13px}
+.ntgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px}
+.ntgrid[hidden]{display:none}
+.ntf{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.ntf input,.ntf select{font-size:14px;color:var(--ink)}
 button.plusbtn{font-size:18px;line-height:1;padding:6px 14px}
 select.movesel{width:42px;padding:3px 2px;text-align:center;text-align-last:center;cursor:pointer}
 .duebtn{position:relative;cursor:pointer}
@@ -2539,22 +2550,53 @@ function itemSelect(id,label,withInbox){
 /* все виды задач создаются одной формой; тип — необязательная пометка у обычной задачи */
 var TASK_TYPES={general:'Общая',buy:'Покупка',pay:'Платёж',improve:'План',go:'Сходить',sell:'Выложить на продажу'};
 function isGeneral(t){return !t.buy&&!t.sell&&!t.improve&&!t.go&&!isPay(t);}
+/* какие поля нужны каждому типу задачи: остальные скрыты, чтобы форма оставалась короткой */
+var NT_FIELDS={sum:['pay'],addr:['go'],when:['go'],time:['general','go'],repeat:['general','pay'],group:['general']};
+var NT_PH={general:'Что нужно сделать…',sell:'Можно оставить пустым — подставится название вещи',pay:'Что оплатить',buy:'Что купить',go:'Куда сходить',improve:'Что улучшить или сделать'};
+function ntVis(field,type){return NT_FIELDS[field].indexOf(type)>=0;}
+function ntStyle(field,type,extra){return ' data-ntf="'+NT_FIELDS[field].join(' ')+'" style="'+(ntVis(field,type)?'':'display:none;')+(extra||'')+'"';}
 function newTaskForm(defType){
   var groups=(state.taskGroups||[]).length
-    ?'<select id="nt-group" aria-label="Группа"><option value="">без группы</option>'
-      +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select>':'';
-  return '<div class="groupblock"><h3>Новая задача</h3><div class="addrow" style="margin-top:0">'
-    +'<select id="nt-type" data-f="nt-type" aria-label="Тип задачи">'
-    +Object.keys(TASK_TYPES).map(function(k){return '<option value="'+k+'"'+(k===defType?' selected':'')+'>'+TASK_TYPES[k]+'</option>';}).join('')+'</select>'
-    +'<input type="text" id="nt-text" placeholder="Что нужно сделать…">'
-    +'<input type="text" inputmode="decimal" id="nt-sum" placeholder="Сумма, ₽" style="flex:none;width:110px'+(defType==='pay'?'':';display:none')+'">'
- +'<input type="text" id="nt-addr" placeholder="Адрес (необязательно)" style="'+(defType==='go'?'':'display:none')+'">'
-    +'<input type="text" id="nt-when" placeholder="Когда удобно, например «вечером»" style="'+(defType==='go'?'':'display:none')+'">'
-    +'<input type="date" id="nt-due" title="Срок (необязательно)">'
-    +'<input type="time" id="nt-time" title="Время (необязательно)" style="width:96px">'
-    +'<select id="nt-repeat" title="Повтор">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select>'
-    +itemSelect('nt-item','Объект',true)+groups
-    +'<button class="btn" data-a="nt-add">Добавить</button></div></div>';
+    ?'<label class="ntf"'+ntStyle('group',defType)+'>Группа<select id="nt-group"><option value="">без группы</option>'
+      +state.taskGroups.map(function(g){return '<option value="'+g.id+'"'+(taskTab===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+'</select></label>':'';
+  return '<div class="groupblock ntform"><h3>Новая задача</h3>'
+    +'<input type="hidden" id="nt-type" value="'+defType+'">'
+    +'<div class="seg ntseg">'+Object.keys(TASK_TYPES).map(function(k){
+        return '<button data-a="nt-type" data-v="'+k+'"'+(k===defType?' class="on"':'')+'>'+TASK_TYPES[k]+'</button>';}).join('')+'</div>'
+    +'<div class="addrow" style="margin-top:0">'
+    +'<input type="text" id="nt-text" placeholder="'+NT_PH[defType]+'">'
+    +'<input type="text" inputmode="decimal" id="nt-sum" placeholder="Сумма, ₽"'+ntStyle('sum',defType,'flex:none;width:110px')+'>'
+    +'<input type="text" id="nt-addr" placeholder="Адрес"'+ntStyle('addr',defType)+'>'
+    +'<button class="btn" data-a="nt-add">Добавить</button></div>'
+    +'<div class="ntdue"><span class="wish-meta">Срок:</span>'
+    +'<button data-a="nt-due" data-v="today">Сегодня</button><button data-a="nt-due" data-v="tomorrow">Завтра</button>'
+    +'<input type="date" id="nt-due" data-f="nt-due-chg" title="Другая дата">'
+    +'<button data-a="nt-more" class="more">⋯ ещё</button></div>'
+    +'<div class="ntgrid" id="nt-more"'+(defType==='sell'?'':' hidden')+'>'
+    +'<label class="ntf"'+ntStyle('time',defType)+'>Время<input type="time" id="nt-time"></label>'
+    +'<label class="ntf"'+ntStyle('repeat',defType)+'>Повтор<select id="nt-repeat">'+Object.keys(REPEATS).map(function(r){return '<option value="'+r+'">'+(r?REPEATS[r]:'без повтора')+'</option>';}).join('')+'</select></label>'
+    +'<label class="ntf"'+ntStyle('when',defType)+'>Когда удобно<input type="text" id="nt-when" placeholder="например, вечером"></label>'
+    +'<label class="ntf">Объект'+itemSelect('nt-item','Объект',true)+'</label>'
+    +groups
+    +'</div></div>';
+}
+/* переключение типа в уже открытой форме: показываем только нужные поля */
+function ntApply(type){
+  var h=document.getElementById('nt-type');if(h)h.value=type;
+  document.querySelectorAll('.ntseg button').forEach(function(x){x.classList.toggle('on',x.dataset.v===type);});
+  document.querySelectorAll('.ntform [data-ntf]').forEach(function(x){
+    x.style.display=x.dataset.ntf.split(' ').indexOf(type)>=0?'':'none';
+  });
+  if(type==='sell'){var m=document.getElementById('nt-more');if(m)m.hidden=false;}     /* вещь выбирается в «ещё» */
+  var ti=document.getElementById('nt-text');
+  if(ti)ti.placeholder=NT_PH[type]||NT_PH.general;
+}
+function ntSyncDue(){
+  var d=document.getElementById('nt-due');if(!d)return;
+  var td=todayStr(),tm=shiftDay(td,1);
+  document.querySelectorAll('.ntdue [data-a=nt-due]').forEach(function(x){
+    x.classList.toggle('on',(x.dataset.v==='today'&&d.value===td)||(x.dataset.v==='tomorrow'&&d.value===tm));
+  });
 }
 /* кнопка «＋» над списком: открывает форму добавления, форма всегда сверху */
 function plusRow(view){
@@ -4782,6 +4824,12 @@ function onClick(e){
     if(addOpen[av])refocus={events:'evn-title',tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
     renderMain();
   }
+  else if(a==='nt-type'){ntApply(b.dataset.v);}
+  else if(a==='nt-due'){
+    var ndi=document.getElementById('nt-due'),want=b.dataset.v==='today'?todayStr():shiftDay(todayStr(),1);
+    if(ndi){ndi.value=(ndi.value===want)?'':want;ntSyncDue();}
+  }
+  else if(a==='nt-more'){var nmo=document.getElementById('nt-more');if(nmo)nmo.hidden=!nmo.hidden;}
   else if(a==='nt-add'){
     var ntt=document.getElementById('nt-type'),type=ntt?ntt.value:'general';
     var nti=document.getElementById('nt-text'),ntx=nti?nti.value.trim():'';
@@ -5523,12 +5571,7 @@ function onChange(e){
     (state.workouts||[]).forEach(function(x){if(x.id===t.dataset.id)x.note=t.value;});
     touch();return;
   }
-  if(f==='nt-type'){
-    var nsh=document.getElementById('nt-sum');
-    if(nsh)nsh.style.display=t.value==='pay'?'':'none';
-    ['nt-addr','nt-when'].forEach(function(id){var e2=document.getElementById(id);if(e2)e2.style.display=t.value==='go'?'':'none';});
-    return;
-  }
+  if(f==='nt-due-chg'){ntSyncDue();return;}
   if(f==='w-place-new'){
     var gi=document.getElementById('w-gym');
     if(gi){gi.style.display=t.value==='gym'?'':'none';}
