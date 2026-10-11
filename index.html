@@ -39,7 +39,13 @@ textarea{width:100%;resize:vertical;min-height:74px}
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
 
 /* ── шапка ── */
-header.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--bg);border-bottom:1px solid var(--line)}
+header.top{position:sticky;top:0;z-index:30;padding:8px 18px 6px;background:var(--bg);border-bottom:1px solid var(--line)}
+.topline{display:flex;align-items:center;gap:12px}
+.topblocks{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
+.topblocks::-webkit-scrollbar{display:none}
+.topblocks button{flex:none;display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border-radius:99px;background:var(--surface2);font-size:14px;white-space:nowrap}
+.topblocks button:hover{background:var(--accent-soft)}
+.topblocks button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .wordmark{font-family:'PT Serif',Georgia,serif;font-weight:700;font-size:19px;letter-spacing:.2px;white-space:nowrap;cursor:pointer}
 .wordmark .leaf{color:var(--accent)}
 #q{flex:1;max-width:340px;min-width:0}
@@ -57,7 +63,7 @@ header.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:
 
 /* ── каркас ── */
 .shell{display:grid;grid-template-columns:214px minmax(0,1fr);gap:0;max-width:1560px;margin:0 auto}
-nav#nav{padding:18px 8px 40px 14px;border-right:1px solid var(--line);position:sticky;top:53px;height:calc(100vh - 53px);overflow-y:auto}
+nav#nav{padding:18px 8px 40px 14px;border-right:1px solid var(--line);position:sticky;top:var(--hh,96px);height:calc(100vh - var(--hh,96px));overflow-y:auto}
 main#main{padding:20px 18px 80px;min-width:0}
 .navgroup{margin-bottom:18px}
 .navgroup h4{margin:0 0 6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
@@ -445,10 +451,9 @@ details.help li{margin-bottom:4px}
   nav#nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:14px;overflow-x:auto;min-width:0}
   .navgroup{margin:0;display:flex;gap:6px;align-items:center;flex:none}
   .navgroup h4{display:none}
-  .navtop{display:none}
+  #chip{font-size:0;gap:0;padding:6px}                /* на узком экране от статуса синхронизации остаётся цветная точка */
   .navitem{white-space:nowrap;padding:6px 11px;background:var(--surface2);border-radius:99px}
   .navitem.on{background:var(--accent-soft)}
-  header.top{flex-wrap:wrap;gap:8px 10px}
   #q{order:3;flex-basis:100%;max-width:none}
 }
 </style>
@@ -456,14 +461,19 @@ details.help li{margin-bottom:4px}
 <body>
 
 <header class="top">
-  <button class="iconbtn" data-a="go" data-v="home" title="Главная" aria-label="Главная">🏠</button>
-  <button class="iconbtn" data-a="go" data-v="cal" title="Календарь" aria-label="Календарь">📅</button>
-  <button class="iconbtn" data-a="go" data-v="notes" title="Заметки" aria-label="Заметки">📝</button>
-  <button class="iconbtn" data-a="go" data-v="diaries" title="Дневники" aria-label="Дневники">📔</button>
-  <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Личный <span class="leaf">кабинет</span></div>
-  <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
-  <button class="iconbtn" data-a="note-new" title="Быстрая заметка" aria-label="Быстрая заметка">✏️</button>
-  <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
+  <div class="topline">
+    <div class="wordmark" role="button" tabindex="0" data-a="go" data-v="home" title="На главную">Личный <span class="leaf">кабинет</span></div>
+    <span id="chip" role="button" tabindex="0" data-a="settings" title="Настройки синхронизации">Загрузка…</span>
+    <button class="iconbtn" data-a="note-new" title="Быстрая заметка" aria-label="Быстрая заметка">✏️</button>
+    <button class="iconbtn" data-a="settings" title="Настройки">⚙</button>
+  </div>
+  <nav class="topblocks" id="topblocks" aria-label="Основные блоки">
+    <button data-a="go" data-v="home">🏠 Главная</button>
+    <button data-a="go" data-v="cal">📅 Календарь</button>
+    <button data-a="go" data-v="tasks">☑ Задачи</button>
+    <button data-a="go" data-v="notes">📝 Заметки</button>
+    <button data-a="go" data-v="diaries">📔 Дневники</button>
+  </nav>
 </header>
 <div class="shell">
   <nav id="nav"></nav>
@@ -1824,10 +1834,11 @@ function navSections(){
   ];
 }
 function renderNav(){
-  var tdy=todayStr(),attN=0;
-  state.items.filter(visible).forEach(function(it){(it.tasks||[]).forEach(function(t){if(!t.done&&t.due&&t.due<=tdy)attN++;});});
-  attN+=eventsOn(tdy).length+bdsOn(tdy).length;
-  var h='<div class="navgroup navtop">'+nv('home','Главная',null,'🏠')+nv('cal','Календарь',attN||null,'📅')+nv('notes','Заметки',(state.notes||[]).length||null,'📝')+nv('diaries','Дневники',null,'📔')+'</div>';
+  var h='';
+  var TOPMAP={home:['home'],cal:['cal'],tasks:['tasks','pay','buy','improve','go','tolist','done'],notes:['notes'],diaries:['diaries','food','workouts']};
+  var hd=document.querySelector('header.top');
+  if(hd)document.documentElement.style.setProperty('--hh',hd.offsetHeight+'px');
+  document.querySelectorAll('#topblocks [data-v]').forEach(function(x){x.classList.toggle('on',(TOPMAP[x.dataset.v]||[]).indexOf(route.view)>=0);});
   navSections().forEach(function(g){
     h+='<div class="navgroup"><h4>'+g.title+'</h4>'
       +g.items.map(function(x){return nv(x.v,x.label,x.n,x.icon);}).join('')
@@ -5915,6 +5926,7 @@ function init(){
   document.addEventListener('pointermove',planMove);
   document.addEventListener('pointerup',planUp);
   document.addEventListener('pointercancel',planUp);
+  window.addEventListener('resize',function(){var hd2=document.querySelector('header.top');if(hd2)document.documentElement.style.setProperty('--hh',hd2.offsetHeight+'px');});
   document.addEventListener('change',onChange);
   /* подсказки из справочника — только когда начали вводить, а не при фокусе */
   document.addEventListener('input',function(e){
