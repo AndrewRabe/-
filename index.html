@@ -2272,7 +2272,7 @@ function renderMain(){
         +(m?'<div class="addrow" style="margin:0 0 8px"><input type="text" data-book="eatbook" autocomplete="off" value="'+esc(m.place||'')+'" data-f="meal-place" data-id="'+m.id+'" placeholder="📍 Где ели: дома, работа, кафе…"></div>':'');
       h+=ds2.length
         ? ds2.map(function(name,i){
-            return '<div class="dish"><span class="t">'+esc(name)+'</span>'
+            return '<div class="dish"><input type="text" class="inl" value="'+esc(name)+'" data-f="dish-name" data-id="'+m.id+'" data-i="'+i+'" data-book="dishbook" autocomplete="off" aria-label="Блюдо" title="Название можно поправить">'
               +'<input type="text" class="duein" value="'+esc((m.q||[])[i]||'')+'" data-f="dish-q" data-id="'+m.id+'" data-i="'+i+'" placeholder="кол-во" title="Сколько (необязательно), например 2 шт" style="width:84px">'
               +'<input type="text" class="duein" data-book="srcbook" autocomplete="off" value="'+esc((m.f||[])[i]||'')+'" data-f="dish-src" data-id="'+m.id+'" data-i="'+i+'" placeholder="откуда" title="Откуда блюдо: домашнее, покупное, магазин…" style="width:104px">'
               +'<button class="x" title="Убрать" data-a="del-dish" data-v="'+sl+'"'+idA+' data-i="'+i+'">✕</button></div>';
@@ -3278,7 +3278,7 @@ function mealDraftSync(){
   });
 }
 function openMealModal(slot){
-  mealDraft={slot:slot,dishes:[]};
+  mealDraft={slot:slot,prevSlot:slot,dishes:[]};
   var m=document.getElementById('modal');
   m.hidden=false;
   m.innerHTML='<div class="modal-box"><h3>Новый приём пищи</h3>'
@@ -5043,7 +5043,9 @@ function onClick(e){
     mealDraft.slot=b.dataset.v;
     document.getElementById('mm-slot').value=b.dataset.v;
     document.querySelectorAll('.mm-seg button').forEach(function(x){x.classList.toggle('on',x.dataset.v===b.dataset.v);});
-    var mt0=document.getElementById('mm-time');if(mt0)mt0.value=defaultTime(b.dataset.v);
+    var mt0=document.getElementById('mm-time');
+    if(mt0&&mt0.value===defaultTime(mealDraft.prevSlot||'')){mt0.value=defaultTime(b.dataset.v);}   /* подставляем время только если его не меняли */
+    mealDraft.prevSlot=b.dataset.v;
   }
   else if(a==='mm-add-dish'){mealDraftTake();var md0=document.getElementById('mm-dish');if(md0)md0.focus();}
   else if(a==='mm-del'){mealDraftSync();mealDraft.dishes.splice(parseInt(b.dataset.i,10),1);mealDraftList();}
@@ -5995,6 +5997,11 @@ function onChange(e){
   if(f==='meal-place'){
     var mpl=findMeal('',t.dataset.id);
     if(mpl){mpl.place=t.value.trim();if(mpl.place)bookAdd('eatplaces',mpl.place);touch();}
+    return;
+  }
+  if(f==='dish-name'){
+    var mdn=findMeal('',t.dataset.id);
+    if(mdn&&t.value.trim()&&mdn.dishes[t.dataset.i]!==undefined){mdn.dishes[t.dataset.i]=bookAdd('dishes',t.value.trim());touch();}
     return;
   }
   if(f==='dish-src'){
