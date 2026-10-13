@@ -1011,6 +1011,7 @@ function adoptRemote(remote){
   if(!state.gyms)state.gyms=[];
   if(!state.taskGroups)state.taskGroups=[];
   if(!state.customCats)state.customCats=[];
+  if(!state.weights)state.weights=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   writeLocal();renderAll();
 }
@@ -1499,7 +1500,7 @@ function nowHM(){var d=new Date();return pad2(d.getHours())+':'+pad2(d.getMinute
 /* записываем обычно сразу после еды — для сегодняшнего дня берём текущее время */
 function defaultTime(slot){return diaryDay===todayStr()?nowHM():(SLOT_TIME[slot]||'');}
 var WKINDS=['Силовая','Бег','Ходьба','Велосипед','Бассейн','Растяжка','Игра','Другое'];
-var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, addingKind=false, propTab='all', foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false, addOpen={};
+var diaryDay=todayStr(), openWorkout=null, openSlots={}, openMeal=null, weightPeriod='30', addingKind=false, propTab='all', foodTab='diary', taskTab='all', addingGroup=false, propStatus='active', showSale=false, addingPay=false, addOpen={};
 /* справочник блюд и упражнений: чем чаще пользуемся, тем выше в подсказках */
 function bookAdd(key,name){
   var t=String(name||'').trim();
@@ -1843,6 +1844,7 @@ function navSections(){
       {v:'done',label:'Выполненные',n:doneN||null,icon:'✔'}
     ]},
     {title:'Сводки',items:[
+      {v:'weight',label:'Вес',n:(state.weights||[]).length||null,icon:'⚖️'},
       {v:'events',label:'Мероприятия',n:((state.birthdays||[]).length+(state.events||[]).length)||null,icon:'🎉'},
       {v:'places',label:'Хранение',n:placesAll().length,icon:'📦'},
       {v:'sales',label:'Продажи',n:state.items.filter(function(i){return i.status==='sale'&&notInbox(i);}).length||null,icon:'💰'},
@@ -2560,6 +2562,41 @@ function renderMain(){
         h+='<div class="groupblock" style="margin-top:14px"><h3>Без места ('+noPlace.length+')</h3><div class="pl-items">'
           +noPlace.slice(0,40).map(function(it){return '<span class="pl-chip" data-a="open" data-id="'+it.id+'">'+CATS[catOf(it)].icon+' '+esc(it.name)+'</span>';}).join('')
           +'</div></div>';
+    }
+  }else if(v==='weight'){
+    var wAll=(state.weights||[]).slice().sort(function(a,b){return (a.date+' '+(a.time||''))<(b.date+' '+(b.time||''))?-1:1;});
+    var wFrom=weightPeriod==='all'?'':shiftDay(todayStr(),-parseInt(weightPeriod,10));
+    var wList=wAll.filter(function(x){return !wFrom||x.date>=wFrom;});
+    h=title('⚖️ Вес',wAll.length)+plusRow('weight')
+      +(addOpen.weight?'<div class="groupblock"><h3>Новая запись</h3><div class="addrow" style="margin-top:0">'
+        +'<input type="text" inputmode="decimal" id="wt-kg" placeholder="Вес, кг" style="flex:none;width:100px">'
+        +'<input type="date" id="wt-date" value="'+todayStr()+'" title="Дата">'
+        +'<input type="time" id="wt-time" value="'+nowHM()+'" title="Время" style="width:104px">'
+        +'<input type="text" id="wt-note" placeholder="Заметка (необязательно)">'
+        +'<button class="btn" data-a="weight-add">Добавить</button></div></div>':'');
+    if(!wAll.length)h+='<div class="empty">Записей веса пока нет. Нажмите «＋» и внесите первое взвешивание.</div>';
+    else{
+      var last=wAll[wAll.length-1],vals=wList.map(function(x){return num(x.kg);});
+      var mn=vals.length?Math.min.apply(null,vals):0,mx=vals.length?Math.max.apply(null,vals):0;
+      var avg=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:0;
+      var delta=wList.length>1?num(wList[wList.length-1].kg)-num(wList[0].kg):0;
+      h+='<div class="seg">'+[['7','Неделя'],['30','Месяц'],['90','3 месяца'],['365','Год'],['all','Всё время']].map(function(pr){
+          return '<button data-a="weight-period" data-v="'+pr[0]+'"'+(weightPeriod===pr[0]?' class="on"':'')+'>'+pr[1]+'</button>';}).join('')+'</div>'
+        +'<div class="stat-tiles">'
+        +'<div><b>'+fmtN(num(last.kg))+' кг</b><span>сейчас · '+fmtDue(last.date)+(last.time?' '+esc(last.time):'')+'</span></div>'
+        +(wList.length>1?'<div><b>'+(delta>0?'+':delta<0?'−':'')+fmtN(Math.abs(delta))+' кг</b><span>за период</span></div>':'')
+        +(wList.length?'<div><b>'+fmtN(mn)+' кг</b><span>минимум</span></div><div><b>'+fmtN(mx)+' кг</b><span>максимум</span></div>'
+          +'<div><b>'+fmtN(avg)+' кг</b><span>среднее ('+wList.length+')</span></div>':'')
+        +'</div>'
+        +(wList.length?'<div class="groupblock">'+lineChart(wList.map(function(x){return {d:x.date,v:num(x.kg)};}),'кг')+'</div>':'<p class="wish-meta">За этот период записей нет.</p>')
+        +'<div class="groupblock"><h3>Записи</h3>'+wAll.slice().reverse().map(function(x){
+          return '<div class="row">'
+            +'<input type="date" class="duein" value="'+esc(x.date)+'" data-f="weight-date" data-id="'+x.id+'" title="Дата">'
+            +'<input type="time" class="duein" value="'+esc(x.time||'')+'" data-f="weight-time" data-id="'+x.id+'" title="Время" style="width:96px">'
+            +'<input type="text" class="duein" inputmode="decimal" value="'+esc(String(x.kg).replace('.',','))+'" data-f="weight-kg" data-id="'+x.id+'" title="Вес, кг" style="width:72px"><span class="wish-meta">кг</span>'
+            +'<input type="text" class="inl" value="'+esc(x.note||'')+'" data-f="weight-note" data-id="'+x.id+'" placeholder="заметка">'
+            +'<button class="x" title="Удалить" data-a="del-weight" data-id="'+x.id+'">✕</button></div>';
+        }).join('')+'</div>';
     }
   }else if(v==='events'){
     var evTd=todayStr(),evList=[];
@@ -3369,6 +3406,7 @@ function voiceDishList(body){
   return body.split(/\s+и\s+|,\s*/).map(function(x){x=x.replace(/^(и|с|на)\s+/,'').trim();var ws=x.split(' ');if(ws[0]&&!/^\d/.test(ws[0]))ws[0]=voiceBase(ws[0]);return ws.join(' ');}).filter(Boolean);
 }
 function vcap(s){s=String(s||'').trim();return s.charAt(0).toUpperCase()+s.slice(1);}
+var V_WEIGHT=/(?<![а-яa-z0-9])(вес|взвесил[а-я]*|весил[а-я]*|вешу)(?![а-яa-z0-9])/;
 var V_BUY=/(купить|купи(?![а-яa-z0-9])|докупить|покупк|закупить)/,V_PAY=/(оплатить|заплатить|оплата|платеж|погасить)/,V_GO=/(сходить|посетить|съездить|заехать|зайти в|поехать в)/;
 var V_WORK=/(пробежал|побегал|бегал|пробежк|тренировк|тренировал|занимался|качал|покачал|плавал|поплавал|бассейн|катался|велосипед|йог|растяжк|в зале|отжимал|подтягивал|приседал|жим(?![а-яa-z0-9])|присед|штанг|футбол|баскетбол|теннис|волейбол|гулял|прогулк|прошел|ходьб)/;
 var V_FOOD=/(поел|ела(?![а-яa-z0-9])|ел(?![а-яa-z0-9])|съел|пообедал|позавтракал|поужинал|перекусил|выпил|пила(?![а-яa-z0-9])|пил(?![а-яa-z0-9])|завтрак|обед|ужин|перекус)/;
@@ -3400,7 +3438,7 @@ function voiceParse(raw){
   });
   var out=[],last=null;
   parts.forEach(function(p){
-    var kind=V_BUY.test(p)?'buy':V_PAY.test(p)?'pay':V_GO.test(p)?'go':V_WORK.test(p)?'workout':V_FOOD.test(p)?'meal':'';
+    var kind=(V_WEIGHT.test(p)&&/\d/.test(p))?'weight':V_BUY.test(p)?'buy':V_PAY.test(p)?'pay':V_GO.test(p)?'go':V_WORK.test(p)?'workout':V_FOOD.test(p)?'meal':'';
     if(!kind){
       /* продолжение списка («…борщ, хлеб») */
       if(last&&(last.t==='meal'||(last.t==='task'&&last.type==='buy'))){
@@ -3409,6 +3447,12 @@ function voiceParse(raw){
       kind='task';
     }
     var e;
+    if(kind==='weight'){
+      var wm=/(\d+)\s+и\s+(\d)(?!\d)/.exec(p),wk2=wm?wm[1]+'.'+wm[2]:'';
+      if(!wk2){var wm2=/(\d+(?:[.,]\d+)?)/.exec(p);wk2=wm2?wm2[1].replace(',','.'):'';}
+      e={t:'weight',kg:wk2,pick:true};
+      out.push(e);last=e;return;
+    }
     if(kind==='meal'){
       var place='';
       var pm=/(?<![а-яa-z0-9])(дома|на работе|в кафе|в ресторане|в столовой|в гостях)(?![а-яa-z0-9])/.exec(p);
@@ -3459,6 +3503,9 @@ var voiceItems=[],voiceRec=null,voiceListening=false;
 function voiceSupported(){return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}
 function voiceEntryHTML(e,i){
   var pick='<input type="checkbox" data-f="vc-pick" data-k="'+i+'"'+(e.pick?' checked':'')+'>';
+  if(e.t==='weight')
+    return '<div class="vc-row">'+pick+'<span class="vc-tag">⚖️</span><span>Вес</span>'
+      +'<input type="text" inputmode="decimal" data-f="vc-kg" data-k="'+i+'" value="'+esc(String(e.kg||'').replace('.',','))+'" style="width:90px"><span class="wish-meta">кг</span></div>';
   if(e.t==='meal')
     return '<div class="vc-row">'+pick+'<span class="vc-tag">🍽</span>'
       +'<select data-f="vc-slot" data-k="'+i+'">'+Object.keys(SLOTS).map(function(k){return '<option value="'+k+'"'+(e.slot===k?' selected':'')+'>'+SLOTS[k]+'</option>';}).join('')+'</select>'
@@ -3524,6 +3571,11 @@ function voiceSave(){
   var td=todayStr(),n=0,t0=nowHM();
   voiceItems.forEach(function(e){
     if(!e.pick)return;
+    if(e.t==='weight'){
+      var kgv=num(e.kg);
+      if(kgv>20&&kgv<400){state.weights=state.weights||[];state.weights.push({id:uid(),date:td,time:t0,kg:kgv,note:''});n++;}
+      return;
+    }
     if(e.t==='meal'){
       var names=String(e.text).split(/;/).map(function(x){return x.trim();}).filter(Boolean);
       if(!names.length)return;
@@ -4300,6 +4352,15 @@ function mergeState(data){
           cur.dishes.push(d);cur.q.push((m.q||[])[mi2]||'');cur.f.push((m.f||[])[mi2]||'');added.meals++;
         }
       });
+    });
+
+    var haveWt={};
+    (state.weights||[]).forEach(function(w){haveWt[w.date+'|'+(w.time||'')+'|'+w.kg]=1;});
+    (data.weights||[]).forEach(function(w){
+      if(!w||!w.date||!(num(w.kg)>0))return;
+      var k=w.date+'|'+(w.time||'')+'|'+w.kg;
+      if(haveWt[k])return;haveWt[k]=1;
+      state.weights=state.weights||[];state.weights.push({id:uid(),date:w.date,time:w.time||'',kg:num(w.kg),note:w.note||''});
     });
 
     var haveWk={};
@@ -5266,7 +5327,7 @@ function onClick(e){
   else if(a==='del-group'){delGroup=id;renderMain();}
   else if(a==='add-toggle'){
     var av=b.dataset.v;addOpen[av]=!addOpen[av];
-    if(addOpen[av])refocus={events:'evn-title',tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
+    if(addOpen[av])refocus={weight:'wt-kg',events:'evn-title',tasks:'sum-task',buy:'sum-buy',improve:'sum-plan',notes:'note-new',wish:'wish-new',bd:'bd-name',places:'pl-name'}[av]||null;
     renderMain();
   }
   else if(a==='nt-type'){ntApply(b.dataset.v);}
@@ -5304,6 +5365,21 @@ function onClick(e){
     markUndo();
     nit.tasks=nit.tasks||[];nit.tasks.push(ne);
     refocus='nt-text';touch();renderAll();
+  }
+  else if(a==='weight-add'){
+    var wkg=document.getElementById('wt-kg'),wv=num(wkg?wkg.value:'');
+    if(!(wv>20&&wv<400)){if(wkg)wkg.focus();toast('Введите вес в килограммах, например 82,5');return;}
+    var wd=document.getElementById('wt-date'),wtm=document.getElementById('wt-time'),wn=document.getElementById('wt-note');
+    markUndo();
+    state.weights=state.weights||[];
+    state.weights.push({id:uid(),date:(wd&&wd.value)||todayStr(),time:(wtm&&wtm.value)||'',kg:wv,note:(wn&&wn.value.trim())||''});
+    refocus='wt-kg';touch();renderAll();
+  }
+  else if(a==='weight-period'){weightPeriod=b.dataset.v;renderMain();}
+  else if(a==='del-weight'){
+    markUndo();
+    state.weights=(state.weights||[]).filter(function(x){return x.id!==id;});
+    touch();renderAll();toast('Запись удалена','Вернуть');
   }
   else if(a==='evn-add'){
     var eti=document.getElementById('evn-title'),etx=eti?eti.value.trim():'';
@@ -6155,7 +6231,19 @@ function onChange(e){
       else if(f==='vc-dur')ve.dur=t.value;
       else if(f==='vc-due')ve.due=t.value;
       else if(f==='vc-sum')ve.sum=t.value;
+      else if(f==='vc-kg')ve.kg=t.value;
       else if(f==='vc-type'){ve.type=t.value;voiceRenderItems();}
+    }
+    return;
+  }
+  if(f.indexOf('weight-')===0){
+    var we=(state.weights||[]).filter(function(x){return x.id===t.dataset.id;})[0];
+    if(we){
+      if(f==='weight-kg'){var nv=num(t.value);if(nv>20&&nv<400)we.kg=nv;}
+      else if(f==='weight-date'){if(t.value)we.date=t.value;}
+      else if(f==='weight-time')we.time=t.value;
+      else if(f==='weight-note')we.note=t.value.trim();
+      touch();renderMain();renderNav();
     }
     return;
   }
@@ -6297,6 +6385,7 @@ function init(){
   if(!state.gyms)state.gyms=[];
   if(!state.taskGroups)state.taskGroups=[];
   if(!state.customCats)state.customCats=[];
+  if(!state.weights)state.weights=[];
   if(!state.settings)state.settings={phone:'',manager:'',address:'',photoBase:''};
   document.addEventListener('click',onClick);
   document.addEventListener('pointerdown',planDown);
