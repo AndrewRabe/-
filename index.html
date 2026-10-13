@@ -399,7 +399,12 @@ form.ntform{}
 .ntgrid[hidden]{display:none}
 .ntf{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
 .ntf input,.ntf select{font-size:14px;color:var(--ink)}
-.mm-list{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.mm-list{margin:10px 0 0}
+.mm-row{display:flex;align-items:center;gap:6px;margin:0 0 6px}
+.modal-box .mm-row input{width:auto;min-width:0;font-size:14px}
+.modal-box .mm-row .mm-dn{flex:1 1 110px}
+.modal-box .mm-row .mm-dq{flex:none;width:68px}
+.modal-box .mm-row .mm-ds{flex:none;width:86px}
 .mm-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border-radius:999px;padding:3px 6px 3px 12px;font-size:13.5px}
 .mm-chip .x{padding:0 4px}
 .inl{flex:1 1 140px;min-width:0;background:transparent;border-color:transparent;padding:3px 6px}
@@ -3254,9 +3259,23 @@ function mealDraftList(){
   var l=document.getElementById('mm-list');
   if(!l)return;
   l.innerHTML=mealDraft.dishes.map(function(d,i){
-    return '<span class="mm-chip">'+esc(d.n)+((d.q||d.s)?' <span class="wish-meta">('+esc([d.q,d.s].filter(Boolean).join(', '))+')</span>':'')
-      +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button></span>';
+    return '<div class="mm-row" data-i="'+i+'">'
+      +'<input type="text" class="mm-dn" value="'+esc(d.n)+'" aria-label="Блюдо" data-book="dishbook" autocomplete="off">'
+      +'<input type="text" class="mm-dq" value="'+esc(d.q||'')+'" placeholder="кол-во" aria-label="Количество">'
+      +'<input type="text" class="mm-ds" value="'+esc(d.s||'')+'" placeholder="откуда" aria-label="Откуда" data-book="srcbook" autocomplete="off">'
+      +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button></div>';
   }).join('')||'<span class="wish-meta">Блюда пока не добавлены</span>';
+}
+/* правки блюд в списке переносим в черновик (перед добавлением ещё одного и перед сохранением) */
+function mealDraftSync(){
+  document.querySelectorAll('#mm-list .mm-row').forEach(function(r){
+    var d=mealDraft.dishes[parseInt(r.dataset.i,10)];
+    if(!d)return;
+    var n=r.querySelector('.mm-dn').value.trim();
+    if(n)d.n=n;
+    d.q=r.querySelector('.mm-dq').value.trim();
+    d.s=r.querySelector('.mm-ds').value.trim();
+  });
 }
 function openMealModal(slot){
   mealDraft={slot:slot,dishes:[]};
@@ -3283,6 +3302,7 @@ function openMealModal(slot){
 }
 /* из поля ввода — в черновик (несколько блюд через «;») */
 function mealDraftTake(){
+  mealDraftSync();
   var di=document.getElementById('mm-dish'),qi=document.getElementById('mm-q'),si=document.getElementById('mm-src');
   var names=String(di?di.value:'').split(/[;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
   if(!names.length)return false;
@@ -5026,7 +5046,7 @@ function onClick(e){
     var mt0=document.getElementById('mm-time');if(mt0)mt0.value=defaultTime(b.dataset.v);
   }
   else if(a==='mm-add-dish'){mealDraftTake();var md0=document.getElementById('mm-dish');if(md0)md0.focus();}
-  else if(a==='mm-del'){mealDraft.dishes.splice(parseInt(b.dataset.i,10),1);mealDraftList();}
+  else if(a==='mm-del'){mealDraftSync();mealDraft.dishes.splice(parseInt(b.dataset.i,10),1);mealDraftList();}
   else if(a==='mm-save'){
     mealDraftTake();
     if(!mealDraft.dishes.length){var md1=document.getElementById('mm-dish');if(md1)md1.focus();toast('Добавьте хотя бы одно блюдо');return;}
