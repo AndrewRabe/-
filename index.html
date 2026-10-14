@@ -405,6 +405,7 @@ form.ntform{}
 .fldchips button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .mm-det{flex-basis:100%;display:flex;gap:6px}
 .modal-box .mm-row .mm-det input{flex:1 1 0;width:auto}
+.btn[disabled]{opacity:.45;cursor:default}
 .mm-list{margin:10px 0 0}
 .mm-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px}
 .modal-box .mm-row input{width:auto;min-width:0;font-size:14px}
@@ -2295,7 +2296,7 @@ function renderMain(){
           }).join('')
         : '<p class="hint" style="margin:0 0 6px">Пока ничего не записано.</p>';
       h+='<div class="addrow" style="margin-top:8px"><input type="text" data-book="dishbook" id="dish-'+key+'" placeholder="Что было… (несколько — через «;»)" autocomplete="off">'
-        +'<button class="btn ghost" data-a="add-dish" data-v="'+sl+'"'+idA+'>Добавить</button></div>'
+        +'<button class="btn" data-a="add-dish" data-v="'+sl+'"'+idA+' disabled>Добавить</button></div>'
         +'<div class="addrow dishx" style="margin-top:6px">'
         +'<input type="text" id="dq-'+key+'" placeholder="Кол-во" hidden style="flex:none;width:84px">'
         +'<input type="text" id="ds-'+key+'" data-book="srcbook" autocomplete="off" placeholder="Откуда" hidden style="flex:none;width:104px">'
@@ -3351,7 +3352,7 @@ function openMealModal(slot){
     +'<label for="mm-place">Где</label><input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)">'
     +'<label>Что ели</label>'
     +'<div class="addrow" style="margin-top:0"><input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Блюдо (несколько — через «;»)" style="width:auto;flex:1 1 140px">'
-    +'<button class="btn ghost" data-a="mm-add-dish">＋</button></div>'
+    +'<button class="btn" id="mm-add" data-a="mm-add-dish" disabled>Добавить</button></div>'
     +'<div class="addrow dishx" style="margin-top:6px">'
     +'<input type="text" id="mm-q" placeholder="Кол-во" hidden style="width:72px;flex:none">'
     +'<input type="text" id="mm-src" data-book="srcbook" autocomplete="off" placeholder="Откуда" hidden title="Домашнее, покупное, магазин…" style="width:100px;flex:none">'
@@ -3372,6 +3373,7 @@ function mealDraftTake(){
   var q=(qi&&names.length===1)?qi.value.trim():'',src=si?si.value.trim():'',brand=bi?bi.value.trim():'';
   names.forEach(function(n){mealDraft.dishes.push({n:n,q:q,s:src,b:brand});});
   if(di)di.value='';if(qi)qi.value='';if(si)si.value='';if(bi)bi.value='';
+  var ab=document.getElementById('mm-add');if(ab)ab.disabled=true;
   mealDraftList();
   return true;
 }
@@ -6441,6 +6443,13 @@ function init(){
   document.addEventListener('pointerup',planUp);
   document.addEventListener('pointercancel',planUp);
   document.addEventListener('input',function(e){if(e.target&&e.target.tagName==='TEXTAREA')autoGrow(e.target);});
+  /* кнопка «Добавить блюдо» активна, когда название заполнено */
+  document.addEventListener('input',function(e){
+    var t=e.target;
+    if(!t||!t.id||!(t.id==='mm-dish'||t.id.indexOf('dish-')===0))return;
+    var bt=t.parentElement&&t.parentElement.querySelector('[data-a=add-dish],[data-a=mm-add-dish]');
+    if(bt)bt.disabled=!t.value.trim();
+  });
   var agT=null;
   new MutationObserver(function(){clearTimeout(agT);agT=setTimeout(autoGrowAll,0);}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});
   window.addEventListener('resize',autoGrowAll);
