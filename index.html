@@ -35,7 +35,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Golos Text',system-ui,-a
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
 input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
 input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,[data-a]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-textarea{width:100%;resize:vertical;min-height:74px}
+textarea{width:100%;resize:none;min-height:74px;max-height:70vh;overflow-y:auto}
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
 
 /* ── шапка ── */
@@ -3581,7 +3581,7 @@ function voiceStart(){
   voiceRec=new SR();voiceRec.lang='ru-RU';voiceRec.interimResults=true;voiceRec.continuous=true;
   voiceRec.onresult=function(ev){
     var txt='';for(var i=0;i<ev.results.length;i++)txt+=ev.results[i][0].transcript+' ';
-    if(ta)ta.value=base+txt.trim();
+    if(ta){ta.value=base+txt.trim();autoGrow(ta);}
   };
   voiceRec.onerror=function(ev){
     if(st)st.textContent=ev.error==='not-allowed'||ev.error==='service-not-allowed'?'Нет доступа к микрофону — разрешите его в настройках браузера.':'Ошибка распознавания: '+ev.error;
@@ -6410,6 +6410,13 @@ function applyHash(){
   if(mi&&find(mi[1])){route.item=mi[1];return true;}
   return false;
 }
+/* поля для записи растут вместе с текстом, без внутренней прокрутки */
+function autoGrow(t){
+  if(!t||t.offsetParent===null)return;
+  t.style.height='auto';
+  t.style.height=Math.min(t.scrollHeight+2,Math.round(window.innerHeight*0.7))+'px';
+}
+function autoGrowAll(){document.querySelectorAll('textarea').forEach(autoGrow);}
 function init(){
   var justLoggedIn=ydCaptureToken();
   state=readLocal()||SEED;
@@ -6433,6 +6440,10 @@ function init(){
   document.addEventListener('pointermove',planMove);
   document.addEventListener('pointerup',planUp);
   document.addEventListener('pointercancel',planUp);
+  document.addEventListener('input',function(e){if(e.target&&e.target.tagName==='TEXTAREA')autoGrow(e.target);});
+  var agT=null;
+  new MutationObserver(function(){clearTimeout(agT);agT=setTimeout(autoGrowAll,0);}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden']});
+  window.addEventListener('resize',autoGrowAll);
   window.addEventListener('resize',function(){var hd2=document.querySelector('header.top');if(hd2)document.documentElement.style.setProperty('--hh',hd2.offsetHeight+'px');});
   document.addEventListener('change',onChange);
   /* подсказки из справочника — только когда начали вводить, а не при фокусе */
