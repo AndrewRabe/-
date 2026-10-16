@@ -406,6 +406,23 @@ form.ntform{}
 .mm-det{flex-basis:100%;display:flex;gap:6px}
 .modal-box .mm-row .mm-det input{flex:1 1 0;width:auto}
 .btn[disabled]{opacity:.45;cursor:default}
+#modal.sheetmodal{align-items:flex-end;padding:0}
+.modal-box.sheet{width:100%;max-width:560px;margin:0 auto;border-radius:18px 18px 0 0;max-height:94vh;overflow-y:auto;padding:16px 16px 0}
+.sheet .modal-foot{position:sticky;bottom:0;background:var(--bg);display:flex;gap:10px;margin:14px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.sheet .modal-foot .btn{flex:1;padding:11px 10px;font-size:15px}
+.sheet label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px}
+.sheet input,.sheet select{width:100%;font-size:16px}          /* 16px — чтобы телефон не приближал страницу при вводе */
+.mm-seg4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 4px}
+.mm-seg4 button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 2px;font-size:14px;text-align:center}
+.mm-seg4 button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.mm-times{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mm-add{margin-top:6px}
+.mm-extra{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.mm-extra input{width:100%}
+.mm-extra input.wide{grid-column:1/-1}
+.mm-extra input[hidden]{display:none}
+.mm-addbtn{width:100%;margin-top:10px;padding:11px}
+.mealgrp{margin:1px 0}
 .mm-list{margin:10px 0 0}
 .mm-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px}
 .modal-box .mm-row input{width:auto;min-width:0;font-size:14px}
@@ -1686,6 +1703,20 @@ function findMeal(slot,id){
 }
 /* количество блюда (необязательно, «2 шт», «200 г») хранится параллельно в m.q */
 function dishText(m,i){var q=(m.q||[])[i],f=(m.f||[])[i],b=(m.b||[])[i];return m.dishes[i]+(q?' ('+q+')':'')+((f||b)?' · '+[f,b].filter(Boolean).join(' · '):'');}
+/* блюда одного источника и производителя в выводе собираются вместе: «покупное · Dr. Oetker: пицца, салат» */
+function dishItem(m,i){var q=(m.q||[])[i];return m.dishes[i]+(q?' ('+q+')':'');}
+function dishGroups(m){
+  var order=[],map={};
+  (m.dishes||[]).forEach(function(x,i){
+    var f=(m.f||[])[i]||'',b=(m.b||[])[i]||'',k=f+'|'+b;
+    if(!map[k]){map[k]={label:[f,b].filter(Boolean).join(' · '),items:[]};order.push(k);}
+    map[k].items.push(dishItem(m,i));
+  });
+  /* блюда без источника — первыми */
+  order.sort(function(a,b){return (map[a].label?1:0)-(map[b].label?1:0);});
+  return order.map(function(k){return map[k];});
+}
+function mealSummary(m){return dishGroups(m).map(function(g){return (g.label?g.label+': ':'')+g.items.join(', ');}).join('; ');}
 var dishOpen={};            /* у каких блюд раскрыты поля «кол-во / откуда / производитель» */
 function mealsOn(ds){return (state.meals||[]).filter(function(m){return m.date===ds;});}
 /* приёмы пищи дня по порядку времени, с короткой строкой блюд */
@@ -1695,7 +1726,7 @@ function mealsBrief(ds){
     var d=m.dishes||[];
     if(!d.length)return;
     out.push({time:m.time||'',end:m.end||'',slot:m.slot,
-      text:'🍽 '+d.slice(0,2).map(function(x,i){return dishText(m,i);}).join(', ')+(d.length>2?' +'+(d.length-2):'')});
+      text:'🍽 '+(function(t){return t.length>70?t.slice(0,68)+'…':t;})(mealSummary(m))});
   });
   var order=Object.keys(SLOTS);
   out.sort(function(a,b){
@@ -2269,7 +2300,7 @@ function renderMain(){
           +'<h4>'+SLOTS[sl]+(m.time?'<span class="wish-meta" style="margin-left:8px;text-transform:none">'+esc(m.time)+(m.end?'–'+esc(m.end):'')+'</span>':'')
           +'<span class="wish-meta" style="margin-left:auto;text-transform:none">изменить</span></h4>'
           +(m.place?'<div class="wish-meta" style="margin-bottom:2px">📍 '+esc(m.place)+'</div>':'')
-          +(ds2.length?'<div>'+ds2.map(function(x,i){return esc(dishText(m,i));}).join(', ')+'</div>':'<p class="hint" style="margin:0">Пока ничего не записано.</p>')
+          +(ds2.length?dishGroups(m).map(function(g){return '<div class="mealgrp">'+(g.label?'<span class="wish-meta">'+esc(g.label)+':</span> ':'')+esc(g.items.join(', '))+'</div>';}).join(''):'<p class="hint" style="margin:0">Пока ничего не записано.</p>')
           +(m.note?'<div class="wish-meta" style="margin-top:4px">'+esc(m.note)+'</div>':'')
           +'</div>';
         return;
@@ -2495,7 +2526,7 @@ function renderMain(){
       if(!SLOTS[sl]||!(m.dishes||[]).length)return;
       h+='<div class="row"><span class="ev-time">🍽'+(m.time?' '+esc(m.time)+(m.end?'–'+esc(m.end):''):'')+'</span>'
         +'<span class="t" data-a="food-day" data-v="'+calSel+'" style="cursor:pointer">'
-        +SLOTS[sl]+' — '+esc(m.dishes.map(function(x,i){return dishText(m,i);}).join(', '))+'</span>'
+        +SLOTS[sl]+' — '+esc(mealSummary(m))+'</span>'
         +'<span class="src" data-a="food-day" data-v="'+calSel+'">дневник</span></div>';
     });
     selN.forEach(function(n){
@@ -3341,26 +3372,26 @@ function mealDraftSync(){
 function openMealModal(slot){
   mealDraft={slot:slot,prevSlot:slot,dishes:[]};
   var m=document.getElementById('modal');
-  m.hidden=false;
-  m.innerHTML='<div class="modal-box"><h3>Новый приём пищи</h3>'
+  m.hidden=false;m.className='sheetmodal';
+  m.innerHTML='<div class="modal-box sheet"><h3>Новый приём пищи</h3>'
     +'<input type="hidden" id="mm-slot" value="'+slot+'">'
-    +'<div class="seg mm-seg">'+Object.keys(SLOTS).map(function(k){
+    +'<div class="mm-seg4">'+Object.keys(SLOTS).map(function(k){
         return '<button data-a="mm-type" data-v="'+k+'"'+(k===slot?' class="on"':'')+'>'+SLOTS[k]+'</button>';}).join('')+'</div>'
-    +'<div class="addrow" style="margin-top:10px;align-items:center"><label style="margin:0">Время</label>'
-    +'<input type="time" id="mm-time" value="'+esc(defaultTime(slot))+'" style="width:auto"><span class="wish-meta">–</span>'
-    +'<input type="time" id="mm-end" style="width:auto" title="Окончание (необязательно)"></div>'
-    +'<label for="mm-place">Где</label><input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)">'
-    +'<label>Что ели</label>'
-    +'<div class="addrow" style="margin-top:0"><input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Блюдо (несколько — через «;»)" style="width:auto;flex:1 1 140px">'
-    +'<button class="btn" id="mm-add" data-a="mm-add-dish" disabled>Добавить</button></div>'
-    +'<div class="addrow dishx" style="margin-top:6px">'
-    +'<input type="text" id="mm-q" placeholder="Кол-во" hidden style="width:72px;flex:none">'
-    +'<input type="text" id="mm-src" data-book="srcbook" autocomplete="off" placeholder="Откуда" hidden title="Домашнее, покупное, магазин…" style="width:100px;flex:none">'
-    +'<input type="text" id="mm-brand" data-book="brandbook" autocomplete="off" placeholder="Производитель" hidden style="width:130px;flex:none"></div>'
-    +'<div class="quick fldchips" style="margin-top:4px"><button data-a="fld" data-t="mm-q">＋ кол-во</button><button data-a="fld" data-t="mm-src">＋ откуда</button><button data-a="fld" data-t="mm-brand">＋ производитель</button></div>'
+    +'<div class="mm-times"><label>Начало<input type="time" id="mm-time" value="'+esc(defaultTime(slot))+'"></label>'
+    +'<label>Конец<input type="time" id="mm-end" title="Необязательно"></label></div>'
+    +'<label>Где<input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)"></label>'
+    +'<label class="mm-lab">Блюда</label>'
     +'<div id="mm-list" class="mm-list"></div>'
+    +'<div class="mm-add">'
+    +'<input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Название блюда (несколько — через «;»)">'
+    +'<div class="mm-extra">'
+    +'<input type="text" id="mm-q" placeholder="Количество" hidden>'
+    +'<input type="text" id="mm-src" data-book="srcbook" autocomplete="off" placeholder="Откуда: домашнее, покупное…" hidden>'
+    +'<input type="text" id="mm-brand" data-book="brandbook" autocomplete="off" placeholder="Производитель" hidden class="wide"></div>'
+    +'<div class="quick fldchips"><button data-a="fld" data-t="mm-q">＋ кол-во</button><button data-a="fld" data-t="mm-src">＋ откуда</button><button data-a="fld" data-t="mm-brand">＋ производитель</button></div>'
+    +'<button class="btn mm-addbtn" id="mm-add" data-a="mm-add-dish" disabled>＋ Добавить блюдо</button></div>'
     +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
-    +'<button class="btn" data-a="mm-save">Сохранить</button></div></div>';
+    +'<button class="btn" data-a="mm-save">ОК</button></div></div>';
   mealDraftList();
   document.getElementById('mm-dish').focus();
 }
@@ -3563,7 +3594,8 @@ function openVoice(){
   voiceItems=[];
   var m=document.getElementById('modal');
   m.hidden=false;
-  m.innerHTML='<div class="modal-box"><h3>Голосовой ввод</h3>'
+  m.className='sheetmodal';
+  m.innerHTML='<div class="modal-box sheet"><h3>Голосовой ввод</h3>'
     +'<div class="vc-top"><button class="btn vc-mic" id="vc-mic" data-a="vc-mic">🎤 Говорить</button>'
     +'<span class="wish-meta" id="vc-status">'+(voiceSupported()?'Нажмите и скажите: что съели, чем занимались, что нужно сделать.':'Распознавание речи в этом браузере недоступно — введите текст или диктуйте клавиатурой телефона.')+'</span></div>'
     +'<textarea id="vc-text" rows="3" placeholder="Например: пообедал борщом и хлебом, пробежал 5 километров, завтра в 18 позвонить в банк, купить молоко"></textarea>'
@@ -3629,7 +3661,7 @@ function voiceSave(){
   return n;
 }
 
-function closeModal(){if(typeof voiceStop==='function')voiceStop();var m=document.getElementById('modal');m.hidden=true;m.innerHTML='';}
+function closeModal(){if(typeof voiceStop==='function')voiceStop();var m=document.getElementById('modal');m.hidden=true;m.className='';m.innerHTML='';}
 
 /* ══════════ настройки ══════════ */
 function openSettings(){
@@ -5138,7 +5170,7 @@ function onClick(e){
   else if(a==='mm-type'){
     mealDraft.slot=b.dataset.v;
     document.getElementById('mm-slot').value=b.dataset.v;
-    document.querySelectorAll('.mm-seg button').forEach(function(x){x.classList.toggle('on',x.dataset.v===b.dataset.v);});
+    document.querySelectorAll('.mm-seg4 button').forEach(function(x){x.classList.toggle('on',x.dataset.v===b.dataset.v);});
     var mt0=document.getElementById('mm-time');
     if(mt0&&mt0.value===defaultTime(mealDraft.prevSlot||'')){mt0.value=defaultTime(b.dataset.v);}   /* подставляем время только если его не меняли */
     mealDraft.prevSlot=b.dataset.v;
@@ -6470,6 +6502,10 @@ function init(){
   });
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape'){closeViewer();closeDetail();closeModal();closeSettings();}
+    if(e.key==='Enter'&&e.target.id&&/^mm-(dish|q|src|brand)$/.test(e.target.id)){
+      var mab=document.getElementById('mm-add');if(mab&&!mab.disabled){e.preventDefault();mab.click();}
+      return;
+    }
     if(e.key==='Enter'&&e.target.matches&&e.target.matches('.addrow input[type=text]')){
       var par=e.target.parentElement,btn=par.querySelector('[data-a]');
       if(!btn&&par.classList.contains('dishx')&&par.previousElementSibling)btn=par.previousElementSibling.querySelector('[data-a]');   /* Enter в скрытых полях добавляет блюдо */
