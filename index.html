@@ -3375,6 +3375,7 @@ function openMealModal(slot,em){
     +'<input type="hidden" id="mm-slot" value="'+slot+'">'
     +'<div class="mm-seg4">'+Object.keys(SLOTS).map(function(k){
         return '<button data-a="mm-type" data-v="'+k+'"'+(k===slot?' class="on"':'')+'>'+SLOTS[k]+'</button>';}).join('')+'</div>'
+    +'<label>Дата<input type="date" id="mm-date" value="'+esc(em?(em.date||diaryDay):diaryDay)+'"></label>'
     +'<div class="mm-times"><label>Начало<input type="time" id="mm-time" value="'+esc(em?(em.time||''):defaultTime(slot))+'"></label>'
     +'<label>Конец<input type="time" id="mm-end" title="Необязательно" value="'+esc(em?(em.end||''):'')+'"></label></div>'
     +'<label>Где<input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)" value="'+esc(em?(em.place||''):'')+'"></label>'
@@ -5187,12 +5188,12 @@ function onClick(e){
     markUndo();
     var mpi=document.getElementById('mm-place'),mplace=mpi?mpi.value.trim():'';
     var old=mealDraft.editId?(state.meals||[]).filter(function(x){return x.id===mealDraft.editId;})[0]:null;
-    var nm={id:old?old.id:uid(),date:old?old.date:diaryDay,slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],f:[],b:[],place:mplace,note:old?(old.note||''):''};
+    var nm={id:old?old.id:uid(),date:((document.getElementById('mm-date')||{}).value)||(old?old.date:diaryDay),slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],f:[],b:[],place:mplace,note:old?(old.note||''):''};
     if(mplace)bookAdd('eatplaces',mplace);
     mealDraft.dishes.forEach(function(d){nm.dishes.push(bookAdd('dishes',d.n));nm.q.push(d.q||'');nm.f.push(d.s||'');nm.b.push(d.b||'');if(d.s)bookAdd('sources',d.s);if(d.b)bookAdd('brands',d.b);});
     state.meals=state.meals||[];
     if(old)state.meals[state.meals.indexOf(old)]=nm;else state.meals.push(nm);
-    mealDraft=null;touch();closeModal();renderAll();
+    diaryDay=nm.date;mealDraft=null;touch();closeModal();renderAll();
     toast(old?'Приём пищи изменён':'Приём пищи добавлен','Отменить');
   }
   else if(a==='open-slot'){
