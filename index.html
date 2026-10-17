@@ -403,8 +403,8 @@ form.ntform{}
 .dish-det{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 4px}
 .dish-det input{flex:1 1 90px;min-width:0}
 .fldchips button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.mm-det{flex-basis:100%;display:flex;gap:6px}
-.modal-box .mm-row .mm-det input{flex:1 1 0;width:auto}
+.mm-det{flex-basis:100%;display:grid;grid-template-columns:72px 1fr 1fr;gap:6px}
+.modal-box .mm-row .mm-det input{width:100%;min-width:0;padding:8px}
 .btn[disabled]{opacity:.45;cursor:default}
 #modal.sheetmodal{align-items:flex-end;padding:0}
 .modal-box.sheet{width:100%;max-width:560px;margin:0 auto;border-radius:18px 18px 0 0;max-height:94vh;overflow-y:auto;padding:16px 16px 0}
@@ -424,7 +424,7 @@ form.ntform{}
 .mm-addbtn{width:100%;margin-top:10px;padding:11px}
 .mealgrp{margin:1px 0}
 .mm-list{margin:10px 0 0}
-.mm-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px}
+.mm-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line,#e3e3dc)}
 .modal-box .mm-row input{width:auto;min-width:0;font-size:14px}
 .modal-box .mm-row .mm-dn{flex:1 1 110px}
 .modal-box .mm-row .mm-dq{flex:none;width:68px}
@@ -3346,15 +3346,12 @@ function mealDraftList(){
   var l=document.getElementById('mm-list');
   if(!l)return;
   l.innerHTML=mealDraft.dishes.map(function(d,i){
-    var has=d.q||d.s||d.b;
     return '<div class="mm-row" data-i="'+i+'">'
       +'<input type="text" class="mm-dn" value="'+esc(d.n)+'" aria-label="Блюдо" data-book="dishbook" autocomplete="off">'
-      +(!d.open&&has?'<span class="wish-meta">'+esc([d.q,d.s,d.b].filter(Boolean).join(' · '))+'</span>':'')
-      +'<button class="x" title="Количество, откуда, производитель" data-a="mm-more" data-i="'+i+'">'+(d.open?'▴':'⋯')+'</button>'
       +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button>'
-      +(d.open?'<div class="mm-det"><input type="text" class="mm-dq" value="'+esc(d.q||'')+'" placeholder="кол-во" aria-label="Количество">'
-        +'<input type="text" class="mm-ds" value="'+esc(d.s||'')+'" placeholder="откуда" aria-label="Откуда" data-book="srcbook" autocomplete="off">'
-        +'<input type="text" class="mm-db" value="'+esc(d.b||'')+'" placeholder="производитель" aria-label="Производитель" data-book="brandbook" autocomplete="off"></div>':'')
+      +'<div class="mm-det"><input type="text" class="mm-dq" value="'+esc(d.q||'')+'" placeholder="кол-во" aria-label="Количество">'
+      +'<input type="text" class="mm-ds" value="'+esc(d.s||'')+'" placeholder="откуда" aria-label="Откуда" data-book="srcbook" autocomplete="off">'
+      +'<input type="text" class="mm-db" value="'+esc(d.b||'')+'" placeholder="производитель" aria-label="Производитель" data-book="brandbook" autocomplete="off"></div>'
       +'</div>';
   }).join('')||'<span class="wish-meta">Блюда пока не добавлены</span>';
 }
@@ -3369,17 +3366,18 @@ function mealDraftSync(){
     if(qe)d.q=qe.value.trim();if(se)d.s=se.value.trim();if(be)d.b=be.value.trim();
   });
 }
-function openMealModal(slot){
-  mealDraft={slot:slot,prevSlot:slot,dishes:[]};
+function openMealModal(slot,em){
+  mealDraft={slot:slot,prevSlot:slot,dishes:[],editId:em?em.id:null};
+  if(em)(em.dishes||[]).forEach(function(n,i){mealDraft.dishes.push({n:n,q:(em.q||[])[i]||'',s:(em.f||[])[i]||'',b:(em.b||[])[i]||''});});
   var m=document.getElementById('modal');
   m.hidden=false;m.className='sheetmodal';
-  m.innerHTML='<div class="modal-box sheet"><h3>Новый приём пищи</h3>'
+  m.innerHTML='<div class="modal-box sheet"><h3>'+(em?'Приём пищи':'Новый приём пищи')+'</h3>'
     +'<input type="hidden" id="mm-slot" value="'+slot+'">'
     +'<div class="mm-seg4">'+Object.keys(SLOTS).map(function(k){
         return '<button data-a="mm-type" data-v="'+k+'"'+(k===slot?' class="on"':'')+'>'+SLOTS[k]+'</button>';}).join('')+'</div>'
-    +'<div class="mm-times"><label>Начало<input type="time" id="mm-time" value="'+esc(defaultTime(slot))+'"></label>'
-    +'<label>Конец<input type="time" id="mm-end" title="Необязательно"></label></div>'
-    +'<label>Где<input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)"></label>'
+    +'<div class="mm-times"><label>Начало<input type="time" id="mm-time" value="'+esc(em?(em.time||''):defaultTime(slot))+'"></label>'
+    +'<label>Конец<input type="time" id="mm-end" title="Необязательно" value="'+esc(em?(em.end||''):'')+'"></label></div>'
+    +'<label>Где<input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)" value="'+esc(em?(em.place||''):'')+'"></label>'
     +'<label class="mm-lab">Блюда</label>'
     +'<div id="mm-list" class="mm-list"></div>'
     +'<div class="mm-add">'
@@ -3390,7 +3388,7 @@ function openMealModal(slot){
     +'<input type="text" id="mm-brand" data-book="brandbook" autocomplete="off" placeholder="Производитель" hidden class="wide"></div>'
     +'<div class="quick fldchips"><button data-a="fld" data-t="mm-q">＋ кол-во</button><button data-a="fld" data-t="mm-src">＋ откуда</button><button data-a="fld" data-t="mm-brand">＋ производитель</button></div>'
     +'<button class="btn mm-addbtn" id="mm-add" data-a="mm-add-dish" disabled>＋ Добавить блюдо</button></div>'
-    +'<div class="modal-foot"><button class="btn ghost" data-a="modal-close">Отмена</button>'
+    +'<div class="modal-foot">'+(em?'<button class="btn ghost" data-a="mm-delmeal">Удалить</button>':'<button class="btn ghost" data-a="modal-close">Отмена</button>')
     +'<button class="btn" data-a="mm-save">ОК</button></div></div>';
   mealDraftList();
   document.getElementById('mm-dish').focus();
@@ -5147,7 +5145,7 @@ function onClick(e){
   else if(a==='prop-status'){propStatus=b.dataset.v;renderMain();}
   else if(a==='prop-sale'){showSale=!showSale;renderMain();}
   else if(a==='food-tab'){foodTab=b.dataset.v;renderMain();}
-  else if(a==='meal-open'){openMeal=id;renderMain();}
+  else if(a==='meal-open'){var om=(state.meals||[]).filter(function(x){return x.id===id;})[0];if(om)openMealModal(om.slot,om);}
   else if(a==='meal-close'){openMeal=null;renderMain();}
   else if(a==='voice'){openVoice();}
   else if(a==='vc-mic'){voiceStart();}
@@ -5176,6 +5174,11 @@ function onClick(e){
     mealDraft.prevSlot=b.dataset.v;
   }
   else if(a==='mm-add-dish'){mealDraftTake();var md0=document.getElementById('mm-dish');if(md0)md0.focus();}
+  else if(a==='mm-delmeal'){
+    var dm=mealDraft&&mealDraft.editId;if(!dm)return;
+    markUndo();state.meals=(state.meals||[]).filter(function(x){return x.id!==dm;});
+    mealDraft=null;touch();closeModal();renderAll();toast('Приём пищи удалён','Отменить');
+  }
   else if(a==='mm-del'){mealDraftSync();mealDraft.dishes.splice(parseInt(b.dataset.i,10),1);mealDraftList();}
   else if(a==='mm-save'){
     mealDraftTake();
@@ -5183,12 +5186,14 @@ function onClick(e){
     var mtm=document.getElementById('mm-time'),mnd=document.getElementById('mm-end');
     markUndo();
     var mpi=document.getElementById('mm-place'),mplace=mpi?mpi.value.trim():'';
-    var nm={id:uid(),date:diaryDay,slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],f:[],b:[],place:mplace,note:''};
+    var old=mealDraft.editId?(state.meals||[]).filter(function(x){return x.id===mealDraft.editId;})[0]:null;
+    var nm={id:old?old.id:uid(),date:old?old.date:diaryDay,slot:mealDraft.slot,time:(mtm&&mtm.value)||defaultTime(mealDraft.slot),end:(mnd&&mnd.value)||'',dishes:[],q:[],f:[],b:[],place:mplace,note:old?(old.note||''):''};
     if(mplace)bookAdd('eatplaces',mplace);
     mealDraft.dishes.forEach(function(d){nm.dishes.push(bookAdd('dishes',d.n));nm.q.push(d.q||'');nm.f.push(d.s||'');nm.b.push(d.b||'');if(d.s)bookAdd('sources',d.s);if(d.b)bookAdd('brands',d.b);});
-    state.meals=state.meals||[];state.meals.push(nm);
+    state.meals=state.meals||[];
+    if(old)state.meals[state.meals.indexOf(old)]=nm;else state.meals.push(nm);
     mealDraft=null;touch();closeModal();renderAll();
-    toast('Приём пищи добавлен','Отменить');
+    toast(old?'Приём пищи изменён':'Приём пищи добавлен','Отменить');
   }
   else if(a==='open-slot'){
     openSlots[b.dataset.v]=true;
