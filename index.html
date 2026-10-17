@@ -403,7 +403,7 @@ form.ntform{}
 .dish-det{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 4px}
 .dish-det input{flex:1 1 90px;min-width:0}
 .fldchips button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.mm-det{flex-basis:100%;display:grid;grid-template-columns:72px 1fr 1fr;gap:6px}
+.mm-det{flex-basis:100%;display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .modal-box .mm-row .mm-det input{width:100%;min-width:0;padding:8px}
 .btn[disabled]{opacity:.45;cursor:default}
 #modal.sheetmodal{align-items:flex-end;padding:0}
@@ -415,19 +415,32 @@ form.ntform{}
 .mm-seg4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 4px}
 .mm-seg4 button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 2px;font-size:14px;text-align:center}
 .mm-seg4 button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
-.mm-times{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.mm-add{margin-top:6px}
-.mm-extra{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.mm-extra input{width:100%}
-.mm-extra input.wide{grid-column:1/-1}
-.mm-extra input[hidden]{display:none}
-.mm-addbtn{width:100%;margin-top:10px;padding:11px}
+.modal-box.mealsheet{display:flex;flex-direction:column;overflow:hidden;padding:0;max-height:92vh;max-height:92dvh}
+.ms-head{padding:14px 16px 8px}
+.ms-title{font-family:inherit;font-weight:700;font-size:18px;margin-bottom:8px}
+.mm-when{display:flex;align-items:center;gap:6px;margin-top:8px}
+.mm-when input{width:auto;min-width:0;padding:8px 4px;font-size:14px}
+.mm-when input[type=date]{flex:1.5}.mm-when input[type=time]{flex:1}
+.ms-dash{color:var(--muted)}
+.ms-body{flex:1 1 auto;overflow-y:auto;padding:4px 16px 10px;min-height:90px}
+.ms-bar{padding:8px 16px 0;border-top:1px solid var(--line);background:var(--surface2,var(--bg))}
+.mm-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.mm-chips button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:13px}
+.mm-chips button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.ms-bar input[hidden]{display:none}
+.ms-bar>input{margin-top:6px}
+.mm-addrow{display:flex;gap:6px;margin:8px 0 6px}
+.mm-addrow #mm-dish{flex:1 1 auto;min-width:0}
+.mm-addrow #mm-q{flex:none;width:76px}
+.mm-addrow .mm-addbtn{flex:none;width:48px;padding:0;font-size:22px;margin:0}
+.mealsheet .modal-foot{position:static;margin:0;border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
 .mealgrp{margin:1px 0}
-.mm-list{margin:10px 0 0}
-.mm-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line,#e3e3dc)}
+.mm-list{margin:8px 0 0}
+.mm-gh{font-size:12px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+.mm-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px}
 .modal-box .mm-row input{width:auto;min-width:0;font-size:14px}
 .modal-box .mm-row .mm-dn{flex:1 1 110px}
-.modal-box .mm-row .mm-dq{flex:none;width:68px}
+.modal-box .mm-row .mm-dq{flex:none;width:72px}
 .modal-box .mm-row .mm-ds{flex:none;width:86px}
 .mm-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border-radius:999px;padding:3px 6px 3px 12px;font-size:13.5px}
 .mm-chip .x{padding:0 4px}
@@ -3342,17 +3355,39 @@ function openGoPlan(itemId,taskId){
 }
 /* новый приём пищи собирается в отдельном окне: введённое в других приёмах не мешает */
 var mealDraft=null;
+function mealChips(){
+  var c=document.getElementById('mm-srcchips');if(!c)return;
+  var cur=mealDraft.curS||'';
+  var arr=bookTop('sources',6).map(function(x){return x.name;});
+  mealDraft.dishes.map(function(d){return d.s;}).concat([cur]).forEach(function(n){if(n&&arr.indexOf(n)<0)arr.unshift(n);});
+  c.innerHTML='<button data-a="mm-src-pick" data-v=""'+(!cur?' class="on"':'')+'>без</button>'
+    +arr.map(function(n){return '<button data-a="mm-src-pick" data-v="'+esc(n)+'"'+(n===cur?' class="on"':'')+'>'+esc(n)+'</button>';}).join('')
+    +'<button data-a="fld" data-t="mm-src"'+'>＋ своё</button>'
+    +'<button data-a="fld" data-t="mm-brand"'+(mealDraft.curB?' class="on"':'')+'>'+(mealDraft.curB?esc(mealDraft.curB):'＋ произв.')+'</button>';
+}
 function mealDraftList(){
   var l=document.getElementById('mm-list');
   if(!l)return;
-  l.innerHTML=mealDraft.dishes.map(function(d,i){
-    return '<div class="mm-row" data-i="'+i+'">'
-      +'<input type="text" class="mm-dn" value="'+esc(d.n)+'" aria-label="Блюдо" data-book="dishbook" autocomplete="off">'
-      +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button>'
-      +'<div class="mm-det"><input type="text" class="mm-dq" value="'+esc(d.q||'')+'" placeholder="кол-во" aria-label="Количество">'
-      +'<input type="text" class="mm-ds" value="'+esc(d.s||'')+'" placeholder="откуда" aria-label="Откуда" data-book="srcbook" autocomplete="off">'
-      +'<input type="text" class="mm-db" value="'+esc(d.b||'')+'" placeholder="производитель" aria-label="Производитель" data-book="brandbook" autocomplete="off"></div>'
-      +'</div>';
+  var groups=[],idx={};
+  mealDraft.dishes.forEach(function(d,i){
+    var k=(d.s||'')+'|'+(d.b||'');
+    if(idx[k]===undefined){idx[k]=groups.length;groups.push({label:[d.s,d.b].filter(Boolean).join(' · '),rows:[]});}
+    groups[idx[k]].rows.push(i);
+  });
+  groups.sort(function(x,y){return (x.label?1:0)-(y.label?1:0);});
+  l.innerHTML=groups.map(function(g){
+    return '<div class="mm-grp">'+(groups.length>1||g.label?'<div class="mm-gh">'+(g.label?esc(g.label):'без источника')+'</div>':'')
+      +g.rows.map(function(i){
+        var d=mealDraft.dishes[i];
+        return '<div class="mm-row" data-i="'+i+'">'
+          +'<input type="text" class="mm-dn" value="'+esc(d.n)+'" aria-label="Блюдо" data-book="dishbook" autocomplete="off">'
+          +'<input type="text" class="mm-dq" value="'+esc(d.q||'')+'" placeholder="кол-во" aria-label="Количество" inputmode="text">'
+          +'<button class="x" title="Источник, производитель" data-a="mm-more" data-i="'+i+'">'+(d.open?'▴':'⋯')+'</button>'
+          +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button>'
+          +(d.open?'<div class="mm-det"><input type="text" class="mm-ds" value="'+esc(d.s||'')+'" placeholder="откуда" aria-label="Откуда" data-book="srcbook" autocomplete="off">'
+            +'<input type="text" class="mm-db" value="'+esc(d.b||'')+'" placeholder="производитель" aria-label="Производитель" data-book="brandbook" autocomplete="off"></div>':'')
+          +'</div>';
+      }).join('')+'</div>';
   }).join('')||'<span class="wish-meta">Блюда пока не добавлены</span>';
 }
 /* правки блюд в списке переносим в черновик (перед добавлением ещё одного и перед сохранением) */
@@ -3367,44 +3402,51 @@ function mealDraftSync(){
   });
 }
 function openMealModal(slot,em){
-  mealDraft={slot:slot,prevSlot:slot,dishes:[],editId:em?em.id:null};
+  mealDraft={slot:slot,prevSlot:slot,dishes:[],editId:em?em.id:null,curS:'',curB:''};
   if(em)(em.dishes||[]).forEach(function(n,i){mealDraft.dishes.push({n:n,q:(em.q||[])[i]||'',s:(em.f||[])[i]||'',b:(em.b||[])[i]||''});});
+  var places=bookTop('eatplaces',5);
   var m=document.getElementById('modal');
   m.hidden=false;m.className='sheetmodal';
-  m.innerHTML='<div class="modal-box sheet"><h3>'+(em?'Приём пищи':'Новый приём пищи')+'</h3>'
+  m.innerHTML='<div class="modal-box sheet mealsheet">'
+    +'<div class="ms-head"><div class="ms-title">'+(em?'Приём пищи':'Новый приём пищи')+'</div>'
     +'<input type="hidden" id="mm-slot" value="'+slot+'">'
     +'<div class="mm-seg4">'+Object.keys(SLOTS).map(function(k){
         return '<button data-a="mm-type" data-v="'+k+'"'+(k===slot?' class="on"':'')+'>'+SLOTS[k]+'</button>';}).join('')+'</div>'
-    +'<label>Дата<input type="date" id="mm-date" value="'+esc(em?(em.date||diaryDay):diaryDay)+'"></label>'
-    +'<div class="mm-times"><label>Начало<input type="time" id="mm-time" value="'+esc(em?(em.time||''):defaultTime(slot))+'"></label>'
-    +'<label>Конец<input type="time" id="mm-end" title="Необязательно" value="'+esc(em?(em.end||''):'')+'"></label></div>'
-    +'<label>Где<input type="text" id="mm-place" data-book="eatbook" autocomplete="off" placeholder="Дома, работа, кафе… (необязательно)" value="'+esc(em?(em.place||''):'')+'"></label>'
-    +'<label class="mm-lab">Блюда</label>'
-    +'<div id="mm-list" class="mm-list"></div>'
-    +'<div class="mm-add">'
-    +'<input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Название блюда (несколько — через «;»)">'
-    +'<div class="mm-extra">'
-    +'<input type="text" id="mm-q" placeholder="Количество" hidden>'
-    +'<input type="text" id="mm-src" data-book="srcbook" autocomplete="off" placeholder="Откуда: домашнее, покупное…" hidden>'
-    +'<input type="text" id="mm-brand" data-book="brandbook" autocomplete="off" placeholder="Производитель" hidden class="wide"></div>'
-    +'<div class="quick fldchips"><button data-a="fld" data-t="mm-q">＋ кол-во</button><button data-a="fld" data-t="mm-src">＋ откуда</button><button data-a="fld" data-t="mm-brand">＋ производитель</button></div>'
-    +'<button class="btn mm-addbtn" id="mm-add" data-a="mm-add-dish" disabled>＋ Добавить блюдо</button></div>'
+    +'<div class="mm-when"><input type="date" id="mm-date" aria-label="Дата" value="'+esc(em?(em.date||diaryDay):diaryDay)+'">'
+    +'<input type="time" id="mm-time" aria-label="Начало" value="'+esc(em?(em.time||''):defaultTime(slot))+'">'
+    +'<span class="ms-dash">–</span>'
+    +'<input type="time" id="mm-end" aria-label="Конец" value="'+esc(em?(em.end||''):'')+'"></div></div>'
+    +'<div class="ms-body">'
+    +'<input type="text" id="mm-place" data-book="eatbook" autocomplete="off" aria-label="Где" placeholder="📍 Где (необязательно)" value="'+esc(em?(em.place||''):'')+'">'
+    +(places.length?'<div class="mm-chips" id="mm-placechips">'+places.map(function(x){return '<button data-a="mm-place-pick" data-v="'+esc(x.name)+'">'+esc(x.name)+'</button>';}).join('')+'</div>':'')
+    +'<div id="mm-list" class="mm-list"></div></div>'
+    +'<div class="ms-bar">'
+    +'<div class="mm-chips" id="mm-srcchips"></div>'
+    +'<input type="text" id="mm-src" data-book="srcbook" autocomplete="off" placeholder="Откуда: домашнее, магазин…" hidden>'
+    +'<input type="text" id="mm-brand" data-book="brandbook" autocomplete="off" placeholder="Производитель" hidden>'
+    +'<div class="mm-addrow"><input type="text" id="mm-dish" data-book="dishbook" autocomplete="off" placeholder="Что съели? (несколько — через «;»)">'
+    +'<input type="text" id="mm-q" placeholder="кол-во" aria-label="Количество">'
+    +'<button class="btn mm-addbtn" id="mm-add" data-a="mm-add-dish" disabled aria-label="Добавить блюдо">＋</button></div></div>'
     +'<div class="modal-foot">'+(em?'<button class="btn ghost" data-a="mm-delmeal">Удалить</button>':'<button class="btn ghost" data-a="modal-close">Отмена</button>')
     +'<button class="btn" data-a="mm-save">ОК</button></div></div>';
-  mealDraftList();
-  document.getElementById('mm-dish').focus();
+  mealChips();mealDraftList();
+  if(!em)document.getElementById('mm-dish').focus();
 }
-/* из поля ввода — в черновик (несколько блюд через «;») */
+/* из поля ввода — в черновик (несколько блюд через «;»); источник и производитель «залипают» для следующих блюд */
 function mealDraftTake(){
   mealDraftSync();
   var di=document.getElementById('mm-dish'),qi=document.getElementById('mm-q'),si=document.getElementById('mm-src'),bi=document.getElementById('mm-brand');
+  if(si&&si.value.trim()){mealDraft.curS=si.value.trim();si.value='';si.hidden=true;}
+  if(bi&&bi.value.trim()){mealDraft.curB=bi.value.trim();bi.value='';bi.hidden=true;}
   var names=String(di?di.value:'').split(/[;\n]+/).map(function(x){return x.trim();}).filter(Boolean);
+  mealChips();
   if(!names.length)return false;
-  var q=(qi&&names.length===1)?qi.value.trim():'',src=si?si.value.trim():'',brand=bi?bi.value.trim():'';
-  names.forEach(function(n){mealDraft.dishes.push({n:n,q:q,s:src,b:brand});});
-  if(di)di.value='';if(qi)qi.value='';if(si)si.value='';if(bi)bi.value='';
+  var q=(qi&&names.length===1)?qi.value.trim():'';
+  names.forEach(function(n){mealDraft.dishes.push({n:n,q:q,s:mealDraft.curS,b:mealDraft.curB});});
+  if(di)di.value='';if(qi)qi.value='';
   var ab=document.getElementById('mm-add');if(ab)ab.disabled=true;
   mealDraftList();
+  var l=document.getElementById('mm-list');if(l){var bd=l.parentNode;bd.scrollTop=bd.scrollHeight;}
   return true;
 }
 /* ══════════ голосовой ввод: «что сделал и поел» одной фразой ══════════ */
@@ -5174,6 +5216,8 @@ function onClick(e){
     if(mt0&&mt0.value===defaultTime(mealDraft.prevSlot||'')){mt0.value=defaultTime(b.dataset.v);}   /* подставляем время только если его не меняли */
     mealDraft.prevSlot=b.dataset.v;
   }
+  else if(a==='mm-src-pick'){mealDraftSync();mealDraft.curS=b.dataset.v;mealChips();var sx=document.getElementById('mm-src');if(sx){sx.value='';sx.hidden=true;}}
+  else if(a==='mm-place-pick'){var pp=document.getElementById('mm-place');if(pp)pp.value=b.dataset.v;}
   else if(a==='mm-add-dish'){mealDraftTake();var md0=document.getElementById('mm-dish');if(md0)md0.focus();}
   else if(a==='mm-delmeal'){
     var dm=mealDraft&&mealDraft.editId;if(!dm)return;
