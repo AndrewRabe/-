@@ -1720,12 +1720,12 @@ function findMeal(slot,id){
 /* количество блюда (необязательно, «2 шт», «200 г») хранится параллельно в m.q */
 function dishText(m,i){var q=(m.q||[])[i],f=(m.f||[])[i],b=(m.b||[])[i];return m.dishes[i]+(q?' ('+q+')':'')+((f||b)?' · '+[f,b].filter(Boolean).join(' · '):'');}
 /* блюда одного источника и производителя в выводе собираются вместе: «покупное · Dr. Oetker: пицца, салат» */
-function dishItem(m,i){var q=(m.q||[])[i];return m.dishes[i]+(q?' ('+q+')':'');}
+function dishItem(m,i){var q=(m.q||[])[i],b=(m.b||[])[i];return m.dishes[i]+(q?' '+q:'')+(b?' ('+b+')':'');}
 function dishGroups(m){
   var order=[],map={};
   (m.dishes||[]).forEach(function(x,i){
-    var f=(m.f||[])[i]||'',b=(m.b||[])[i]||'',k=f+'|'+b;
-    if(!map[k]){map[k]={label:[f,b].filter(Boolean).join(' · '),items:[]};order.push(k);}
+    var f=(m.f||[])[i]||'',k=f;
+    if(!map[k]){map[k]={label:f,items:[]};order.push(k);}
     map[k].items.push(dishItem(m,i));
   });
   /* блюда без источника — первыми */
@@ -3363,7 +3363,7 @@ function mealDraftList(){
   if(!l)return;
   l.innerHTML=mealDraft.dishes.map(function(d,i){
     if(!d.open){
-      var meta=[d.q,d.s,d.b].filter(Boolean).join(' · ');
+      var meta=[d.q,d.s].filter(Boolean).join(' · ')+(d.b?' ('+d.b+')':'');
       return '<div class="mm-row mm-card" data-i="'+i+'"><button class="mm-ct" data-a="mm-more" data-i="'+i+'"><span class="mm-n">'+esc(d.n)+'</span>'
         +'<span class="mm-m">'+(meta?esc(meta):'изменить')+'</span></button>'
         +'<button class="x" title="Убрать" data-a="mm-del" data-i="'+i+'">✕</button></div>';
